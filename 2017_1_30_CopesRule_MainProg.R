@@ -47,22 +47,24 @@ class(tree.list)
 #Date tree
 occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Artiodactyla,Perissodactyla&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
 
-#occs <- appendTaxonNames1.2(occs, taxonomic.level="species", keep.indet=TRUE)
-
 tree_dated <- list()
-tree_dated <- lapply (X = tree.list, FUN = date_tree, occs) #need to swap LO and FO column headers
+tree_dated <- lapply (X = tree.list, FUN = date_tree, occs) #need to swap LO and FO column headers; Check to see if the objects are being save correctly (i.e. tree dated properly)
 #tree_dated <- replicate(n = reps, expr = date_tree)
 
 class(tree_dated)
 
 #Approximate Sampling Rate
-freqRat(timeData = ranges,plot=TRUE)
-SPres <- getSampProbDisc()
-SPres
-sRate <-sProb2sRate(SPres[[0]][], int.legnth=meanInt)
 
+
+#cal3 requires tree=class phylo so line below is to test
+test.tree <- tree_resolution(backbone_tree = tree_base,Species_file = clade_sp,MRCA_file = MCRA_Codes)
+class(test.tree)
 
 #will call cal3 next
-cal3TimePaleoPhy(tree, timeData, brRate, extRate, sampRate, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
+#cal3 is wrking but generating polytomies
+tree.cal<- cal3TimePaleoPhy(tree = test.tree, timeData = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
 
-tree_cal <- bin_cal3TimePaleoPhy(tree = tree_dated, timeData = ranges, brRate = ranges$FO, extRate = ranges$LO, sampRate, ntrees = reps, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
+plot(tree.cal, font = 3, cex =0.2, label.offset = 1, adj = 0)
+
+#tree_cal <- bin_cal3TimePaleoPhy(tree = test.tree, timeList = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
+
