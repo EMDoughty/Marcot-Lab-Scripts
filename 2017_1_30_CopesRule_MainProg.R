@@ -68,3 +68,5 @@ plot(tree.cal, font = 3, cex =0.2, label.offset = 1, adj = 0)
 
 #tree_cal <- bin_cal3TimePaleoPhy(tree = test.tree, timeList = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
 
+
+print("check to see if linked to Github")
