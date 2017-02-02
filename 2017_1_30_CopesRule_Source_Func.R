@@ -92,16 +92,26 @@ date_tree <-function(this.tree, occs)
 
 	ranges <- getTaxonRangesFromOccs(occs, random = TRUE)	
 	
-	#rownames(ranges) <-gsub(pattern = "[[space:]]",replacement ="_", x = rownames(ranges))
+	#rownames(ranges) <-gsub(pattern = "[[:space:]]",replacement ="_", x = rownames(ranges))
 	rownames(ranges) <- str_replace_all(rownames(ranges),fixed(" "), "_")
 
 	return(this.tree)
 }
 
 
-getSampleRate <- function(occs)
+drop_DupTips <- function(tree)
 {
-	
+	tree$tip.label <- gsub(pattern = "[[:space:]]", replacement = "_", x = getCurrentTaxa(gsub("_", " ", tree$tip.label, fixed=TRUE)))
+	dup.taxa <- unique(tree$tip.label[duplicated(tree$tip.label)])
+	for (i in seq_along(dup.taxa)) tree <- drop.tip(tree, tip=sample(which(tree$tip.label==dup.taxa[i]), size=sum(tree$tip.label==dup.taxa[i])-1))
+	tree	
+		
+	return(tree)
+}
+
+
+getSamExtRate <- function(occs)
+{
 	intervals <- makeIntervals(startDate=57, endDate=1, intervalLength=2)
 	intervals
 
@@ -120,27 +130,11 @@ getSampleRate <- function(occs)
 	
 	#how do we want to have these sampled? (by epoch, stage, NALMA. etx)
 	#
-	
-	mat_ranges <- list(ranges,intervals) # interval files needs to be comprised of persistent taxa
-	mat_ranges
-	
-	#code from Bapst Site will likely not work as fuctions--freqRat and getSampDisc--are for discrete data
-	freqRat(timeData = mat_ranges,plot=TRUE)
-	freqRat()
-	
-	SPres <- getSampProbDisc(ranges)
-	SPres
-	sRate <-sProb2sRate(SPres[[0]][], int.legnth=meanInt)
-
-	#sampleRanges(taxad = ranges, r, alpha = 1, beta = 1, rTimeRatio = 1, modern.samp.prob = 1, min.taxa = 2, ranges.only = TRUE, minInt = 0.01, merge.cryptic = TRUE, randLiveHat = TRUE, alt.method = FALSE, plot = FALSE)  ####This appears to be meant for simulations
-
-	#ranges_binned <- binTimeData(timeData= ranges, int.length = 5, start = NA, int.times = NULL) # funtion list as Being specifically only for simulations and not real data
-	
-	
+		
 	#sets ranges_binned as a function that runs everytime it is called which leads to new values being output everytime
 	ranges_binned <- make_durationFreqCont(timeData = ranges, groups = NULL, drop.extant = TRUE, threshold = 0.01, tol = 1e-04)
 		
-optim(parInit(ranges_binned), ranges_binned, lower = parLower(ranges_binned), upper = parUpper(ranges_binned), method = "L-BFGS-B")
+#optim(parInit(ranges_binned), ranges_binned, lower = parLower(ranges_binned), upper = parUpper(ranges_binned), method = "L-BFGS-B")
 	
 	#parnames(ranges_binned)
 	#parbounds(ranges_binned)
@@ -148,38 +142,100 @@ optim(parInit(ranges_binned), ranges_binned, lower = parLower(ranges_binned), up
 	#parUpper(ranges_binned)
 	#parInit(ranges_binned)
 	
-#outputs of make_durationFreqCont
-red <-vector()
-red <- parInit(ranges_binned)
-class(red)
-red
+	#class(ranges_binned)
+	
+	#outputs of make_durationFreqCont
+#red <-vector()
+#red <- parInit(ranges_binned)
+#class(red)
+#red
 
 #q=instantaneous per-capita extinction rate; 
-q_extR <- vector()
-q_extR <- red[1]
-q_extR
+#q_extR <- vector()
+#q_extR <- red[1]
+#q_extR
 
 #r=instantaneous per-capita sampling rate;
-r_sam<- vector()
-r_sam <- red[2]
-r_sam
+#r_sam<- vector()
+#r_sam <- red[2]
+#r_sam
 
 #R is per-interval taxonomic sampling probability
-sRate <- sRate2sProb(r_sam, int.length = 1)
-sRate
+#sProb <- sRate2sProb(r_sam, int.length = 1)
+#sProb
 
 #will call cal3 next
 #cal3 is wrking but generating polytomies
-tree.cal<- cal3TimePaleoPhy(tree = test.tree, timeData = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
+#tree.cal<- cal3TimePaleoPhy(tree = test.tree, timeData = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
 
-plot(tree.cal, font = 3, cex =0.2, label.offset = 1, adj = 0)
+#plot(tree.cal, font = 3, cex =0.2, label.offset = 1, adj = 0)
 
 #tree_cal <- bin_cal3TimePaleoPhy(tree = test.tree, timeList = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
 
-	return(rate)
+	return(ranges_binned)
 }
 
 
+date_treeCal3 <- function(tree, occs) # do we want this function to only do one tree or go through hole tree list?
+{
+	#Compile occurance data
+	#occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Artiodactyla,Perissodactyla&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+	
+	occs <- appendTaxonNames1.2(occs, taxonomic.level="species", keep.indet=TRUE)
+	head(occs)
+	
+	ranges <- getTaxonRangesFromOccs(occs, random = TRUE)	
+	
+	#rownames(ranges) <-gsub(pattern = "[[space:]]",replacement ="_", x = rownames(ranges))
+	rownames(ranges) <- str_replace_all(rownames(ranges),fixed(" "), "_")
+	
+	ranges
+	class(ranges)
+	
+	#Determine Rates of extinction and sampling
+	#sets ranges_binned as a function that runs everytime it is called which leads to new values being output everytime
+	ranges_binned <- make_durationFreqCont(timeData = ranges, groups = NULL, drop.extant = TRUE, threshold = 0.01, tol = 1e-04)
+		
+optim(parInit(ranges_binned), ranges_binned, lower = parLower(ranges_binned), upper = parUpper(ranges_binned), method = "L-BFGS-B") #prints results within ranges_binned for viewing by user
+	
+	#parnames(ranges_binned)
+	#parbounds(ranges_binned)
+	#parLower(ranges_binned)
+	#parUpper(ranges_binned)
+	#parInit(ranges_binned)
+	
+	class(ranges_binned)
+	
+	#outputs of make_durationFreqCont
+	red <-vector()
+	red <- parInit(ranges_binned)
+	class(red)
+	red
+
+	#q=instantaneous per-capita extinction rate; 
+	q_extR <- vector()
+	q_extR <- red[1]
+	q_extR
+
+	#r=instantaneous per-capita sampling rate;
+	r_sam<- vector()
+	r_sam <- red[2]
+	r_sam
+
+	#R is per-interval taxonomic sampling probability
+	sProb <- sRate2sProb(r_sam, int.length = 1)
+	sProb
+
+	#will call cal3 next
+	#cal3 is wrking but generating polytomies
+	tree.cal<- cal3TimePaleoPhy(tree = test.tree, timeData = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
+
+	plot(tree.cal, font = 3, cex =0.2, label.offset = 1, adj = 0)
+
+	#tree_cal <- bin_cal3TimePaleoPhy(tree = test.tree, timeList = ranges, brRate = q_extR, extRate = q_extR, sampRate = r_sam, ntrees = 1, anc.wt = 1, node.mins = NULL, dateTreatment = "firstLast", FAD.only = FALSE, adj.obs.wt = TRUE, root.max = 200, step.size = 0.1, randres = FALSE, noisyDrop = TRUE, tolerance = 1e-04, diagnosticMode = FALSE, plot = FALSE)
+
+	return(tree.cal)
+}
 
 
 
