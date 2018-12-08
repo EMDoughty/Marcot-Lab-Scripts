@@ -1,16 +1,48 @@
 #source("/Users/evandoughty/Dropbox/ungulate_RA/RCode/2017_2_22_CopesRule_MainProg.R")  # for copy/paste torun in terminal
-if(Sys.info()["sysname"] == "Darwin"){
-	source("~/Dropbox/ungulate_RA/RCode/EvAnalysisMainSetup.R")
-} else if(Sys.info()["sysname"] == "Windows"){
-	source("C:/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/RCode/EvAnalysisMainSetup.R")
-}
-sourceCall()
 
-tree.list.wildcards <- GetWildcardTrees(wildcard.positions)
+require(phytools)
+require(mvMORPH)
+require(stringr)
+require(parallel)
+
+#sources for Jon Marcot's code and specimen measurements 
+source("https://dl.dropbox.com/s/8jy9de5owxj72p7/strat.R")
+source("https://dl.dropbox.com/s/253p4avcvb66795/occFns.R")
+source("https://dl.dropbox.com/s/9gdafsqss2b586x/phy_dateTree.R")
+source("https://dl.dropbox.com/s/9tdawj35qf502jj/amandaSrc.R")
+source("https://dl.dropbox.com/s/rlof7juwr2q4y77/blasto_Birlenbach.R")
+source("https://dl.dropbox.com/s/643op7ye4s49w8p/utils_marcot.R")
+source("https://dl.dropbox.com/s/pxnbmroe2hgcgo3/kozak_src.R")
+if(Sys.info()["sysname"] == "Darwin"){
+	################MAC
+	source('~/Dropbox/ungulate_RA/RCode/2017_2_22_CopesRule_Source_Func_Clavel_ver1.R') #call cource file for analysis functions
+	source('~/Dropbox/ungulate_RA/RCode/EvAnalysesDataSrc.R') #call cource file for data functions
+	source('~/Dropbox/ungulate_RA/RCode/EvAnalysesTreeSrc.R') #call cource file for tree functions
+	source('~/Dropbox/ungulate_RA/RCode/EvAnalysesPlotSrc.R') #call cource file for tree functions
+	tree.backbone <- read.nexus("~/Dropbox/ungulate_RA/NAUngulata_Trees/BackBoneTrees/2017_3_24_UngulataBackboneTree")
+	clade.definitions <- read.csv("~/Dropbox/ungulate_RA/2017_3_20_Clade_species_test.csv", stringsAsFactors = FALSE)
+	wildcard.positions <- read.csv("~/Dropbox/ungulate_RA/2017_4_17_MCRA_Codes.csv", stringsAsFactors = FALSE)
+	regressCat <- read.csv("~/Dropbox/ungulate_RA/BodyMassRegressionAssignment/regressionLabelsJDM.csv")
+	setwd('~/Dropbox/ungulate_RA/RCode/Results')
+} else if(Sys.info()["sysname"] == "Windows"){
+	#################PC   #had to swap my name with Blaires in pathnames
+	source('C:/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/RCode/2017_2_22_CopesRule_Source_Func_Clavel_ver1.R') #call source for use on Evan's PC
+	#setwd("/Users/Evan/Dropbox/ungulate_RA/RCode")
+	tree.backbone <- read.nexus("/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/NAUngulata_Trees/BackBoneTrees/2017_3_24_UngulataBackboneTree")
+	clade.definitions <- read.csv("/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/2017_3_20_Clade_species.csv", stringsAsFactors = FALSE)
+	wildcard.positions <- read.csv("/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/2017_4_17_MCRA_CodesAbsolute.csv", stringsAsFactors = FALSE)
+	regressCat <- read.csv("/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/BodyMassRegressionAssignment/regressionLabelsJDM.csv")
+	setwd("/Users/Van Valkenburgh Lab/Dropbox/ungulate_RA/RCode/Results")
+} else print("Mac or Windows operating systems are not detected")
 
 tree.backbone$tip.label <- gsub(pattern = "[[:space:]]", replacement = "_", x = getCurrentTaxa(gsub("_", " ", tree.backbone$tip.label, fixed=TRUE)))
 tree.list.wildcards <- list()
-
+for (this.wildcard in seq_len(nrow(wildcard.positions))) {
+	tree.list.wildcards[[this.wildcard]] <- read.nexus(file = wildcard.positions$Filename[this.wildcard])
+	tree.list.wildcards[[this.wildcard]]$tip.label <- gsub(pattern = "[[:space:]]", replacement = "_", x = getCurrentTaxa(gsub("_", " ", tree.list.wildcards[[this.wildcard]]$tip.label, fixed=TRUE)))
+	#cat(this.wildcard, ":", length(tree.list.wildcards[[this.wildcard]]$tip.label),"\n")
+}
+class(tree.list.wildcards) <- "multiPhylo"
 
 reps <- 1000
 min.bl <- 1.0
