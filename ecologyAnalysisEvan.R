@@ -11,7 +11,7 @@
 startTime <- Sys.time()
 #sources for Jon Marcot's code and specimen measurements 
 source("https://dl.dropbox.com/s/8jy9de5owxj72p7/strat.R")
-source("https://dl.dropbox.com/s/253p4avcvb66795/occFns.R")g
+source("https://dl.dropbox.com/s/253p4avcvb66795/occFns.R")
 source("https://dl.dropbox.com/s/9gdafsqss2b586x/phy_dateTree.R")
 source("https://dl.dropbox.com/s/9tdawj35qf502jj/amandaSrc.R")
 source("https://dl.dropbox.com/s/rlof7juwr2q4y77/blasto_Birlenbach.R")
@@ -29,6 +29,7 @@ if(Sys.info()["sysname"] == "Darwin"){
 #######
 ####### 
 ####### 
+require(plyr)
 
 #occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Artiodactyla,Perissodactyla&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
 #occs <- occs[occs$cc %in% c("US", "CA", "MX"), ]
@@ -46,7 +47,7 @@ ranges <- getTaxonRangesFromOccs(occs=occs, random=TRUE)
 rownames(ranges) <- gsub(pattern = "[[:space:]]", replacement = "_", x = rownames(ranges))
 
 int_length <- 1
-intervals <- makeIntervals(1, 55.5, int_length)
+intervals <- makeIntervals(1, 56, int_length)
 intList <- listifyMatrixByRow(intervals)
 
 ####################################################################################################################################
@@ -77,8 +78,8 @@ rownames(thisMat) <- thisMat$species
 # focal.order <- "Artiodactyla"
 # focal.order <- "Perissodactyla"
 focal.order <- c("Artiodactyla", "Perissodactyla")
-bigList <- unique(occs[occs$accepted_rank =="species", c("order","family", "accepted_name")])
-bigList <- bigList[order(bigList$order, bigList$family, bigList$accepted_name),]
+bigList <- unique(occs[(occs$accepted_rank =="species" & occs$order %in% focal.order), c("order","family", "genus", "accepted_name")])
+bigList <- bigList[order(bigList$order, bigList$family, bigList$genus, bigList$accepted_name),]
 # bigList[order(bigList$family, bigList$accepted_name),]
 shortFam <- sort(unique(bigList$family[bigList$order %in% focal.order]))	
 
@@ -114,7 +115,7 @@ thisMat <- thisMat[thisMat$species %in% bigList$accepted_name[bigList$order %in%
 #runID <- 
 do.parallel <- TRUE
 	if (do.parallel) require(parallel)
-reps <- 10
+reps <- 1000
 do.subsample <- TRUE
 quota <- 0.4
 do.disparity <- FALSE
@@ -122,8 +123,8 @@ bootstrapSpecimens <- FALSE
 bootstrapSpecies <- FALSE
 bootstrapSpeciesWithinIntervals <- FALSE
 plotHist <- FALSE
-do.heuristic = FALSE
-	extra.intvs = 0
+do.heuristic <- TRUE
+	extra.intvs <- 0
 do.rangethrough <- TRUE
 
 if (bootstrapSpecies) holderMat <- thisMat
@@ -180,8 +181,13 @@ for (rep in seq_len(reps)) {
 	#range through method
 	########
 	
-	if(do.rangethrough == TRUE) intSp <- makeRangeThroughOneRep(intSp)
-	countInt <- intSp
+	#if(do.rangethrough == TRUE) intSp <- makeRangeThroughOneRep(intSp)
+	if(do.rangethrough == TRUE) 
+	{
+			intSp.check <- checkRangeThrough(intSp, ints = unique(unlist(intervals)))
+			intSp <- rangeThrough_alt(intSp.check)
+	}
+	#countInt <- intSp
 	repIntSp[[rep]] <- intSp 
 }
 
@@ -193,7 +199,6 @@ if(Sys.info()["sysname"] == "Darwin"){
 	save(repIntSp, file=paste0("C:/Users/Blaire/Dropbox/ungulate_RA/EcologyResults/RepIntSp_SampleStandardized=", do.subsample, timestamp(),".Rdata"))
 	# load('~/Dropbox/ungulate_RA/EcologyResults/allUngulates/handleyResult##------ Thu Nov  9 02:12:20 2017 ------##_allUngulates.Rdata')
 }
-
 
 ####################################################################################################################################
 ### Handley analysis of taxonomic distributions
@@ -265,11 +270,10 @@ if(Sys.info()["sysname"] == "Darwin"){
 	}
 
 #save(repIntSp, optList_tax_median, optList_tax_allReps, optList_bm_median, optList_bm_allReps, file=paste0("C:/Users/Blaire/Dropbox/ungulate_RA/EcologyResults/handleyResult", timestamp(),".Rdata"))
-
-
-# load('~/Dropbox/ungulate_RA/EcologyResults/handleyResult##------ Sun May 13 01:32:21 2018 ------##.Rdata')
 ####################################################################################################################################
 
+####################################################################################################################################
+quartz(width=10)
 	### Handley-block histogram series
 	this.rep <- 1
 	old.shift <- nrow(intervals)
@@ -281,10 +285,11 @@ if(Sys.info()["sysname"] == "Darwin"){
 		hist(thisMat$bodyMass[unique(unlist(repIntSp[[this.rep]][seq(from=old.shift, to=(this.shift+1))]))], freq=FALSE, breaks=hist.breaks, col=rainbow(length(hist.breaks)), main="", xlab="log Body Mass", ylab="", ylim=c(0,1))
 	}
 
+	# Number of shifts per rep
 	quartz()
 	par(mfrow=c(2,1), mar=c(5, 4, 4, 1))
 	hist(sapply(optList_tax_allReps, function(x) length(x) - 2), breaks=seq(-0.5, 10, 1.0), col="orchid4", main="Number of taxonomic shifts in each rep", xlab="Number of Shifts", xlim=c(0,10))
-	hist(sapply(optList_bm_allReps, function(x) length(x) - 2), breaks=seq(-0.5, 10.5, 1.0), col="firebrick4", main="Number of body mass shifts in each rep", xlab="Number of Shifts", xlim=c(0,10))
+	hist(sapply(optList_bm_allReps, function(x) length(x) - 2), breaks=seq(-0.5, 11.5, 1.0), col="firebrick4", main="Number of body mass shifts in each rep", xlab="Number of Shifts", xlim=c(0,10))
 	
 quants <- apply(sapply(repIntSp, function(y) sapply(y, function(x) quantile(thisMat[x,"bodyMass"], probs=c(0, 0.25, 0.5, 0.75, 1.0), na.rm=TRUE)), simplify = "array"), c(1,2), median, na.rm=TRUE)
 ####################################################################################################################################
@@ -337,6 +342,7 @@ quants <- apply(sapply(repIntSp, function(y) sapply(y, function(x) quantile(this
 		par(mar=c(0,4, 2.5,0.5))
 		
 		# taxCube <- sapply(repIntSp, function(y) sapply(y, function(x) tabulate(match(bigList$family[as.character(bigList$accepted_name) %in% rownames(thisMat)[x]], shortFam), nbins=length(shortFam)), simplify="array"), simplify="array")
+		#taxCubeG <- sapply(repIntSp, function(y) sapply(y, function(x) tabulate(match(bigList$family[as.character(bigList$genus) %in% x], shortFam), nbins=length(shortFam)), simplify="array"), simplify="array")
 		taxCube <- sapply(repIntSp, function(y) sapply(y, function(x) tabulate(match(bigList$family[as.character(bigList$accepted_name) %in% x], shortFam), nbins=length(shortFam)), simplify="array"), simplify="array")
 		dimnames(taxCube) <- list(shortFam, rownames(intervals), NULL)
 		
@@ -399,36 +405,118 @@ quants <- apply(sapply(repIntSp, function(y) sapply(y, function(x) quantile(this
 		endTime <- Sys.time()
 		RunTime2Ma <- endTime - startTime
 
-# write function to lot distribtion of body mass within each break interval
-#Jons code for histograms below: run tests to see how they change iteration to iteration#make into function 
-#	this.rep <- 1
- #   old.shift <- nrow(intervals)
-  #  shift.ints <- rev(which(intervals$ageBase %in% optList[[this.rep]][[length(optList[[this.rep]])]]$optBreaks))
-  #  par(mfrow=c(1,length(shift.ints)+1), mar=c(4,2,0.5,0.5))
-  #  for (this.shift in c(shift.ints, 0)) 
-  #  {
-  #  	hist(thisMat$bodyMass[unique(unlist(repIntSp[[this.rep]][seq(from=old.shift, to=(this.shift+1))]))], freq=TRUE, breaks=c(min(thisMat$bodyMass, na.rm=TRUE),bmBreaks[2:6],max(thisMat$bodyMass, na.rm=TRUE)), col=rainbow(n=length(shift.ints)+1), main="", xlab="log Body Mass", ylab="", ylim=c(0,1))
-  #  }
-
-
+		###Compile regime distribution histograms and net/change histograms using the range of taxon occurance
+#		regimeHist(repIntSp = repIntSp, breaks = c(51,47,37,21, 5,2), optList=optList_bm_median, thisMat = thisMat, netFreq = TRUE, regimeFreq=FALSE,
+#							 netPlotType = "pos/neg", plot.together = FALSE)
+		
+		###Compile regime distribution histograms and net/change histograms using the midpoint of taxon occurance
+		##this was used to produce the regime and net change histograms for publication
+		#get midpoint of each taxon 
+		taxonranges <- getTaxonRangesFromOccs(occs = occs, random = FALSE)
+		rownames(taxonranges) <- gsub(pattern = "[[:space:]]", replacement = "_", x = rownames(taxonranges))
+		taxonranges <- cbind(taxonranges, (taxonranges[,"FO"]+taxonranges[,"LO"])/2); colnames(taxonranges)[3] <- "MP"
+		occDatesMP <- taxonranges[,"MP"]
+		intSpMP <- apply(intervals, 1, function(thisIntv) taxonranges[taxonranges[,"MP"] > thisIntv[1] & taxonranges[,"MP"] <= thisIntv[2],])
+		countCubeMP <- sapply(intSpMP, function(x) hist(thisMat$bodyMass[match(rownames(x), rownames(thisMat))], breaks=bmBreaks, plot=FALSE)$counts, simplify = "array")
+		#drop the intervals that include the Quaternary (<3 Ma)
+		countCubeMP <- countCubeMP[,!as.double(str_remove(colnames(countCubeMP), " Ma")) < 3]
+		optList_bm_medianMP <- doHandleyTest(countCubeMP, n=nrow(thisMat), do.heuristic=do.heuristic, extra.intvs=extra.intvs)
+		regimeHist_countBox(countBox = countCubeMP, breaks = c(51,47,37,21), optList=optList_bm_medianMP, 
+												thisMat = thisMat, netFreq = TRUE, regimeFreq=FALSE,
+												netPlotType = "pos/neg", plot.together = FALSE, plot.axes = TRUE,
+												grayscale = FALSE)
+		
+		
+		##Get frequency of combinations for breaks
+		bm_allReps <- BreakComboFreq(optList_bm_allReps)   #cannot find function count error
+		tax_allReps <- BreakComboFreq(optList_tax_allReps)
+		bm_allReps[order(-bm_allReps$freq),]
+		tax_allReps[order(-tax_allReps$freq),]
+		
+######################################################################################################
+    #load final
+    #RAW
+    load("/Users/emdoughty/Dropbox/ungulate_RA/EcologyResults/BM_handleyResult_SampleStandardized=FALSE##------ Sun Mar 31 15:24:34 2019 ------##.Rdata")
+    load("/Users/emdoughty/Dropbox/ungulate_RA/EcologyResults/Taxon_handleyResult_SampleStandardized=FALSE##------ Sun Mar 31 15:17:50 2019 ------##.Rdata")
+    
+    #Subsampled
+    load("/Users/emdoughty/Dropbox/ungulate_RA/EcologyResults/BM_handleyResult_SampleStandardized=TRUE##------ Fri Mar 29 22:06:27 2019 ------##.Rdata")
+    load("/Users/emdoughty/Dropbox/ungulate_RA/EcologyResults/Taxon_handleyResult_SampleStandardized=TRUE##------ Fri Mar 29 22:00:47 2019 ------##.Rdata")
+    
+    ##Get frequency of combinations for breaks
+    bm_allReps <- BreakComboFreq(optList_bm_allReps)   #cannot find function count error
+    tax_allReps <- BreakComboFreq(optList_tax_allReps)
+    bm_allReps[order(-bm_allReps$freq),]
+    tax_allReps[order(-tax_allReps$freq),]
+    
+    #taxCube <- sapply(repIntSp, function(y) sapply(y, function(x) tabulate(match(bigList$family[as.character(bigList$genus) %in% x], shortFam), nbins=length(shortFam)), simplify="array"), simplify="array")
+    taxCube <- sapply(repIntSp, function(y) sapply(y, function(x) tabulate(match(bigList$family[as.character(bigList$accepted_name) %in% x], shortFam), nbins=length(shortFam)), simplify="array"), simplify="array")
+    dimnames(taxCube) <- list(shortFam, rownames(intervals), NULL)
+    taxPlio_median <- apply(taxCube, c(1,2), median); taxPlio_median[,c("3.5 Ma", "4.5 Ma", "5.5 Ma", "6.5 Ma")]
+    taxPlio_min <- apply(taxCube, c(1,2), min); taxPlio_min[,c("3.5 Ma", "4.5 Ma", "5.5 Ma", "6.5 Ma")]
+    taxPlio_max <- apply(taxCube, c(1,2), max); taxPlio_max[,c("3.5 Ma", "4.5 Ma", "5.5 Ma", "6.5 Ma")]
+    
+    #1-Ma bins c(50,46,40,26,16,2)
+    #2-Ma bins c(51,47,37,21, 5,2)
+    regimeHist(repIntSp = repIntSp, breaks = c(51,47,37,21, 5,2), optList=optList_bm_median, thisMat = thisMat, netFreq = TRUE, regimeFreq=FALSE,
+    					 netPlotType = "pos/neg", plot.together = FALSE)
+    
+    #get midpoint of each taxon 
+    taxonranges <- getTaxonRangesFromOccs(occs = occs, random = FALSE)
+    rownames(taxonranges) <- gsub(pattern = "[[:space:]]", replacement = "_", x = rownames(taxonranges))
+    taxonranges <- cbind(taxonranges, (taxonranges[,"FO"]+taxonranges[,"LO"])/2); colnames(taxonranges)[3] <- "MP"
+    occDatesMP <- taxonranges[,"MP"]
+    intSpMP <- apply(intervals, 1, function(thisIntv) taxonranges[taxonranges[,"MP"] > thisIntv[1] & taxonranges[,"MP"] <= thisIntv[2],])
+    #intSpMP <- lapply(intSpMP, function (y) gsub(pattern = "[[:space:]]", replacement = "_", x = y))
+    
+    #intSpMP <- sapply(intOccsMP, function(x) sort(unique(as.character(gsub(pattern = "[[:space:]]", 
+    #																																			 replacement = "_", x = occs$accepted_name[occs$occurrence_no %in% x])))))
+    countCubeMP <- sapply(intSpMP, function(x) hist(thisMat$bodyMass[match(rownames(x), rownames(thisMat))], breaks=bmBreaks, plot=FALSE)$counts, simplify = "array")
+    #drop the intervals that include the Quaternary (<3 Ma)
+    countCubeMP <- countCubeMP[,!as.double(str_remove(colnames(countCubeMP), " Ma")) < 3]
+    optList_bm_medianMP <- doHandleyTest(countCubeMP, n=nrow(thisMat), do.heuristic=do.heuristic, extra.intvs=extra.intvs)
+    regimeHist_countBox(countBox = countCubeMP, breaks = c(51,47,37,21), optList=optList_bm_medianMP, 
+    										thisMat = thisMat, netFreq = TRUE, regimeFreq=FALSE,
+    										netPlotType = "pos/neg", plot.together = FALSE, plot.axes = TRUE,
+    										grayscale = FALSE)
+    
+    #regimeHist_HistMedian(repIntSp = repIntSp, breaks = c(50,46,40,26,16,2), optList=optList_bm_median, thisMat = thisMat, netFreq = TRUE, regimeFreq=FALSE,
+    #											netPlotType = "pos/neg", plot.together = FALSE)
+   
+    
+    # write function to lot distribtion of body mass within each break interval
+    #Jons code for histograms below: run tests to see how they change iteration to iteration#make into function 
+    this.rep <- 1
+    old.shift <- nrow(intervals)
+    optList <- optList_bm_allReps
+    shift.ints <- rev(which(intervals$ageBase %in% optList[[this.rep]][[length(optList[[this.rep]])]]$optBreaks))
+    par(mfrow=c(1,length(shift.ints)+1), mar=c(4,2,0.5,0.5))
+    for (this.shift in c(shift.ints, 0)) 
+    {
+    	hist(thisMat$bodyMass[unique(unlist(repIntSp[[this.rep]][seq(from=old.shift, to=(this.shift+1))]))], freq=TRUE, breaks=c(min(thisMat$bodyMass, na.rm=TRUE),bmBreaks[2:6],max(thisMat$bodyMass, na.rm=TRUE)), col=rainbow(n=length(shift.ints)+1), main="", xlab="log Body Mass", ylab="", ylim=c(0,1))
+    }
+    
+    
+    
+     
 ###
 #Compiled Histogram of Proportional shifts in body mass
 ###
 
-# # install.packages("ggplot2")
-# require(ggplot2)
-# install.packages("Rcmdr")
-	# require(Rcmdr)
-# quartz(width=6.89)
+ #install.packages("ggplot2")
+ #require(ggplot2)
+ #install.packages("Rcmdr")
+ #require(Rcmdr)
+ #quartz(width=6.89)
 	# par(mfrow=c(2,1), mar=c(4,4, 1,0.5), mgp=c(2, 1,0))
-		# #plot(thisMat$FO, thisMat$bodyMass, xlim=c(max(intervals), min(intervals)), type="n", ylab="% Species Diversity", xaxp =c(55,5,5), xlab="Time (Ma)", cex.axis=1, cex.lab=1, fg="black", bg="black", col.axis="black", col.lab="black")
-		# #rect(-10e6, -10e6, 10e6, 10e6, col="white")
-		# #overlayCzTimescale(do.subepochs=TRUE)
+	#	plot(thisMat$FO, thisMat$bodyMass, xlim=c(max(intervals), min(intervals)), type="n", ylab="% Species Diversity", xaxp =c(55,5,5), xlab="Time (Ma)", cex.axis=1, cex.lab=1, fg="black", bg="black", col.axis="black", col.lab="black")
+	#	rect(-10e6, -10e6, 10e6, 10e6, col="white")
+	#	overlayCzTimescale(do.subepochs=TRUE)
 		
 		# #assign species bin from Janis 2000
 		# #need a vector like countCube but made with raw data prior to distributions
 		# #get list of taxa throughout all intervals by running single run of species interval and rangethrough
-		# countInt
+	#	countInt
 				
 		# #load("/Users/evandoughty/Dropbox/ungulate_RA/RCode/EcologyAnalysisResults/countInt.RData")
 		# #countInt <- countInt_bin1myr
