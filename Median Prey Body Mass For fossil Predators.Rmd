@@ -1,0 +1,489 @@
+---
+title: "Predator Median Prey Plots"
+author: "Evan Doughty"
+date: "7/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/Dropbox/code/R/common_src/strat.R")
+source("~/Dropbox/code/R/common_src/occFns.R")
+source("~/Dropbox/code/R/common_src/sampling.R") 
+source("~/Dropbox/code/R/common_src/utils_marcot.R")
+source("~/Dropbox/code/R/common_src/CzTimescale.R") 
+source("~/Dropbox/Code/R/common_src/taxonomicEv.R")
+
+source('~/Dropbox/code/R/dentalMeasurements/src/src_dentalDataFns.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_bodyMassEstimation.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_ecologyAnalysisFns.R', chdir = TRUE)
+
+source('~/Dropbox/Code/Recreate Dental Plots Source 2021_6_2.R')
+```
+
+```{r, include=FALSE}
+occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occs <- occs[!occs$order %in% c("Cetacea", "Desmostylia", "Sirenia"), ]
+occs <- occs[!occs$family %in% c("Allodelphinidae", "Balaenidae", "Balaenopteridae", "Delphinidae", "Desmatophocidae", "Desmostylidae", 
+                                 "Didelphidae","Dugongidae","Enaliarctidae", "Eschrichtiidae","Iniidae", "Kentriodontidae", "Kogiidae", 
+                                 "Odobenidae", "Otariidae", "Paleoparadoxiidae", "Phocidae", "Physeteridae", "Platanistidae", "Pontoporiidae", 
+                                 "Protocetidae", "Squalodontidae", "Ziphiidae"), ]
+occs$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = occs$accepted_name)	#replace spaces with underscores
+
+####################################################################################################################################
+
+#dental measures are in centimeters while body mass is logged kg
+measure.mat <- getMeasureMatWithBodyMasses()
+this.rank <- "species"
+if (this.rank=="genus") measure.mat <- makeOneGenusMatFromSpecimenMat(measure.mat)
+
+####################################################################################################################################
+#### reduces matrix to just the focal order(s)
+####################################################################################################################################
+
+# focal.order <- "Artiodactyla"
+# focal.order <- "Perissodactyla"
+focal.order <- c("Artiodactyla", "Perissodactyla")
+focal.family <- unique(occs[occs$order %in% focal.order,]$family)
+focal.family <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.family <- focal.family[!focal.family %in% ""]
+focal.family <- focal.family[order(focal.family)]
+
+bigList <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.family), c("order","family", "genus", "accepted_name")])
+bigList <- bigList[order(bigList$order, bigList$family, bigList$genus, bigList$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+shortFam <- sort(unique(bigList$family[bigList$family %in% focal.family]))	
+
+bigList$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigList$accepted_name)
+
+# matrix(measure.mat$taxon[!measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order]], ncol=1)
+# matrix(bigList$accepted_name[bigList$order %in% focal.order][! bigList$accepted_name[bigList$order %in% focal.order] %in% measure.mat$taxon], ncol=1)
+measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order], ]
+
+#remove added columns...cus why I set it to not do that but still gets through....
+#fix.columns<- c("taxon", "P2_L", "P2_W", "P3_L", "P3_W", "P4_L", "P4_W", "M1_L", "M1_W", "M2_L", "M2_W", "M3_L", "M3_W",
+# "p2_l", "p2_w", "p3_l", "p3_w", "p4_l", "p4_w", "m1_l", "m1_w", "m2_l", "m2_w", "m3_l", "m3_w",
+# "p4_a", "m1_a", "m2_a", "m3_a", "M2_A",
+# "family", "genus", "reg.vec", "bodyMass", "col.fam", "sym.fam")
+##
+#measure.mat <- measure.mat[,colnames(measure.mat) %in% fix.columns]
+
+#remove Megacerops curtus due to wierd placement on pca
+measure.culled <- measure.mat[!rownames(measure.mat) %in% "Megacerops_curtus",]
+
+
+archaic.ung <- read.csv("/Users/emdoughty/Dropbox/Code/ArchaicUngulate_UploadFile_2021_4_29.csv")
+
+archaic.Mat.tot <- getMeasureMatCondylarths(data.raw = archaic.ung, occs = occs, 
+                                            col.order = colnames(measure.culled), 
+                                            all.bm = FALSE,
+                                            regression = "ArchaicNonselenodonts")
+
+#write.csv(archaic.Mat.tot,"/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/ArchaicUngulateBodyMass.csv")
+
+measure.culled <- rbind(measure.culled, archaic.Mat.tot)
+measure.culled <- getDateTaxa(measure.mat = measure.culled, occs=occs, this.rank = "species")
+
+load("~/Dropbox/Code/Ungulate10Rep_BM_results_2021_7_19.RData")
+bm_quants_ung <- getTraitQuants(measure.mat = measure.culled, traitCol = "bodyMass", repIntTaxa = repIntAll$RepsTaxa)
+```
+
+```{r, include=FALSE}
+load("~/Dropbox/Code/AllCarniv_21up_1000RepHadleyOutput_2021_7_22.Rdata")
+
+pred.data <- read.csv("~/Dropbox/Code/R/Carnivore Paleobio Seminar/Predator_data_all.csv")
+
+#get column names to be comparable to ungulate data so not break anything
+colnames(pred.data) <- c("family", "taxon",	"max_ma","min_ma",	"m1L",	"rbl",	"BM_all_carnivoran",	"BM_extant_reg")
+
+pred.data$taxon <- gsub(pattern = "[[:space:]]", replacement = "_", x = pred.data$taxon)
+
+rownames(pred.data) <- pred.data$taxon
+
+#purge species wihtout dates or body mass
+#pred.data <- pred.data[complete.cases(pred.data),]
+
+#log bodymasses
+pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")] <- log10(pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")])
+
+occsPred <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occsPred <- occsPred[!occsPred$order %in% c("Cetacea", "Desmostylia", "Sirenia"), ]
+occsPred <- occsPred[!occsPred$family %in% c("Allodelphinidae", "Balaenidae", "Balaenopteridae", "Delphinidae", "Desmatophocidae", "Desmostylidae", 
+                                             "Didelphidae","Dugongidae","Enaliarctidae", "Eschrichtiidae","Iniidae", "Kentriodontidae", "Kogiidae", 
+                                             "Odobenidae", "Otariidae", "Paleoparadoxiidae", "Phocidae", "Physeteridae", "Platanistidae", "Pontoporiidae", 
+                                             "Protocetidae", "Squalodontidae", "Ziphiidae"), ]
+occsPred <- occsPred[!occsPred$family %in% c("Desmatophocidae","Panotariidae","Phocidae","Odobenidae"),]
+occsPred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = occsPred$accepted_name)	#replace spaces with underscores
+
+focal.orderPred <- c("Carnivora", "Creodonta","Hyaenodonta","NO_ORDER_SPECIFIED")
+occsPred <- occsPred[occsPred$order %in% focal.orderPred,]
+focal.familyPred <- unique(occsPred[occsPred$order %in% focal.orderPred,]$family)
+focal.familyPred <- c(as.character(focal.familyPred), "Viverravidae","Hyaenodontidae","NO_FAMILY_SPECIFIED")
+#focal.familyPred <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.familyPred <- focal.familyPred[!focal.familyPred%in% ""]
+focal.familyPred <- focal.familyPred[order(focal.familyPred)]
+
+bigListPred <- unique(occsPred[((occsPred$accepted_rank =="species" | occsPred$accepted_rank =="genus") & occsPred$family %in% focal.familyPred), c("order","family", "genus", "accepted_name")])
+bigListPred <- bigListPred[order(bigListPred$order, bigListPred$family, bigListPred$genus, bigListPred$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+
+bigListPred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigListPred$accepted_name)
+
+bigListPred <- bigListPred[bigListPred$accepted_name %in% pred.data$taxon,]
+
+shortFamPred <- sort(unique(bigListPred$family[bigListPred$family %in% focal.familyPred]))	
+
+pred.data <- getDateTaxa(measure.mat = pred.data, occs=occsPred, this.rank = "species")
+
+#write.csv(pred.data, file = "~/Dropbox/Code/Pred_data_check.csv")
+
+pred.data <- pred.data[complete.cases(pred.data),] #some species have body mass but no rbl
+
+pred.21up <- pred.data[pred.data$BM_all_carnivoran > log10(21),]
+pred.100up <- pred.data[pred.data$BM_all_carnivoran > log10(100),]
+pred.200up <- pred.data[pred.data$BM_all_carnivoran > log10(200),]
+```
+
+```{r, echo=FALSE}
+pred.prey.rat <- read.csv("~/Downloads/TrophicLevel_Appendix1.csv") #from Tucker and Roger 2014
+
+#remove marine, herbivores, and non mammal preds
+pred.prey.rat <- pred.prey.rat[pred.prey.rat$Environment %in% "Terrestrial",]
+pred.prey.rat <- pred.prey.rat[pred.prey.rat$Diet %in% "Carnivore",]
+pred.prey.rat <- pred.prey.rat[pred.prey.rat$Niche %in% "Mammal",]
+
+plot(x=as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)), 
+     y=as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.)),
+     xlab = "log10 predator mass (kg)",
+     ylab = "log10 prey mass (kg)",
+     main = "Data from Tucker and Rogers 2014 with regression line")
+text(x=as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)), 
+     y=as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.)),
+     label = as.character(pred.prey.rat$Taxon), cex = 0.5)
+abline(v = log10(21), col = "red")
+
+#get line/regression of best fit
+best.fit <- lm(as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.))~
+               as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)))
+abline(best.fit, col = "blue")
+```
+
+##Median Body mass of Prey of Predator Guild
+```{r, echo=FALSE}
+pred.data$fossil.estim.prey <- 1.7110*pred.data$BM_all_carnivoran - 1.3487 
+
+plot(x=as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)), 
+     y=as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.)),
+     xlab = "log10 predator mass (kg)",
+     ylab = "log10 prey mass (kg)",
+     main = "Estimated Prey Size for Fossil Predators",
+     xlim = c(-2,3), ylim = c(-3,4),
+     col = alphaColor("grey50", 0.5))
+text(x=as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)), 
+     y=as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.)),
+     label = as.character(pred.prey.rat$Taxon), cex = 0.15, pos = 4, adj = 1,
+     col = alphaColor("grey0", 0.5)     )
+abline(v = log10(21), col = "red")
+abline(best.fit, col = "blue")
+
+points(x = pred.data$BM_all_carnivoran, 
+       y = pred.data$fossil.estim.prey)
+text(x = pred.data$BM_all_carnivoran, 
+     y = pred.data$fossil.estim.prey,
+     label = pred.data$taxon,
+     cex = 0.15, pos = 4, adj = 1)
+```
+
+```{r, echo=FALSE}
+#plot shoulder plot of ungulate body mass and compare with estimated median prey size
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, plot.breaks = FALSE,
+             main = "Median Prey size of Predator Guild",
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             ylim = c(-3,4), xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+
+quants_median.prey <- getTraitQuants(measure.mat = pred.data, traitCol = "fossil.estim.prey", repIntTaxa = repIntAll$RepsTaxa)
+lines(c(rowMeans(intervals),66), quants_median.prey[1,], col="darkblue")
+lines(c(rowMeans(intervals),66), quants_median.prey[2,], col="blue")
+lines(c(rowMeans(intervals),66), quants_median.prey[4,], col="darkblue")
+lines(c(rowMeans(intervals),66), quants_median.prey[5,], col="blue")
+
+lines(c(rowMeans(intervals),66), quants_median.prey[3,], col=alphaColor("lightblue", 0.5), lwd=5)
+lines(c(rowMeans(intervals),66), quants_median.prey[3,], col=alphaColor("blue", 1.0), lwd=3)
+points(c(rowMeans(intervals),66), quants_median.prey[3,], col=alphaColor("darkblue", 0.5), cex=0.5)
+```
+
+##Median Prey of Predator over 21 kg
+```{r, echo=FALSE}
+pred.21up$fossil.estim.prey <- 1.7110*pred.21up$BM_all_carnivoran - 1.3487 #check how far off predicted vs measured values were in og dataset
+
+plot(x=as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)), 
+     y=as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.)),
+     xlab = "log10 predator mass (kg)",
+     ylab = "log10 prey mass (kg)",
+     main = "Estimated Prey Size for Fossil Predators >21kg",
+     xlim = c(0,3), ylim = c(-2,4),
+     col = alphaColor("grey50", 0.5))
+text(x=as.numeric(as.character(pred.prey.rat$Mass..log10.kg.)), 
+     y=as.numeric(as.character(pred.prey.rat$Prey.mass..log10.kg.)),
+     label = as.character(pred.prey.rat$Taxon), cex = 0.15, pos = 4, adj = 1,
+     col = alphaColor("grey0", 0.5)     )
+abline(v = log10(21), col = "red")
+abline(best.fit, col = "blue")
+
+points(x = pred.21up$BM_all_carnivoran, 
+       y = pred.21up$fossil.estim.prey)
+text(x = pred.21up$BM_all_carnivoran, 
+     y = pred.21up$fossil.estim.prey,
+     label = pred.21up$taxon,
+     cex = 0.15, pos = 4, adj = 1)
+```
+
+```{r, echo=FALSE}
+#plot shoulder plot of ungulate body mass and compare with estimated median prey size
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, plot.breaks = FALSE,
+             main = "Median Prey size of >21 kg Predators",
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+
+quants_median.prey <- getTraitQuants(measure.mat = pred.21up, traitCol = "fossil.estim.prey", repIntTaxa = repIntAll$RepsTaxa)
+lines(c(rowMeans(intervals),66), quants_median.prey[1,], col="darkblue")
+lines(c(rowMeans(intervals),66), quants_median.prey[2,], col="blue")
+lines(c(rowMeans(intervals),66), quants_median.prey[4,], col="darkblue")
+lines(c(rowMeans(intervals),66), quants_median.prey[5,], col="blue")
+
+lines(c(rowMeans(intervals),66), quants_median.prey[3,], col=alphaColor("lightblue", 0.5), lwd=5)
+lines(c(rowMeans(intervals),66), quants_median.prey[3,], col=alphaColor("blue", 1.0), lwd=3)
+points(c(rowMeans(intervals),66), quants_median.prey[3,], col=alphaColor("darkblue", 0.5), cex=0.5)
+```
+
+###################
+##look into habitat breakdown of those predators
+##smaller in closed habitats?
+###also size range prey
+
+##############################################################################
+##hunt down max prey size
+###be dynamic thing: small ungulates early on so small canrivore possible
+###ungulates in range this critter could eat
+
+
+###########################################################################################
+#Radloff and du Toit 2004
+```{r, echo=FALSE}
+#de log10 carnivore body masses
+x <- 10^pred.data$BM_all_carnivoran
+
+#regressions arent logged but do it to plot over our shoulder plots
+pred.data$Radloff04.Preymax  = log10(1.46*x - 0.17)
+pred.data$Radloff04.Preymean = log10(1.39*x - 0.74)
+pred.data$Radloff04.Preymin  = log10(0.49*x - 0.88)
+
+```
+
+###Some issues with these regressions is that some of the smallest carnivoes (<= 1.796 kg) regress negative values.  Only run this with >21kg.
+```{r, echo=FALSE}
+pred.nan <- unique(rbind(pred.data[is.nan(pred.data$Radloff04.Preymax),c("family", "FO","LO", "BM_all_carnivoran","Radloff04.Preymax","Radloff04.Preymean", "Radloff04.Preymin")],
+        pred.data[is.nan(pred.data$Radloff04.Preymean),c("family","FO","LO", "BM_all_carnivoran","Radloff04.Preymax","Radloff04.Preymean", "Radloff04.Preymin")],
+        pred.data[is.nan(pred.data$Radloff04.Preymin),c("family","FO","LO", "BM_all_carnivoran","Radloff04.Preymax","Radloff04.Preymean", "Radloff04.Preymin")]))
+
+nrow(pred.nan)
+#pred.nan[order(rownames(pred.nan)),]
+```
+
+```{r, echo=FALSE}
+plot(pred.data$BM_all_carnivoran, pred.data$Radloff04.Preymax,
+     xlim = c(-1,2.75), xaxp = c(-1,3,8), xlab = "Log10 Predator Body mass (kg, all carnivoran)",
+     ylim = c(-2,3), yaxp = c(-2,3,10), ylab = "Log10 Estimated Prey body mass (kg)",
+     main = "Estimated Prey size as per Radloff and du Toit 2004")
+points(pred.data$BM_all_carnivoran, pred.data$Radloff04.Preymean, col = "blue")
+abline(v = -0.2781894, col = "blue")
+points(pred.data$BM_all_carnivoran, pred.data$Radloff04.Preymin, col = "darkgreen")
+abline(v = log10(1.8), col = "darkgreen")
+
+abline(v = log10(21), col = "red")
+```
+
+###Black circles are maximum prey sizes, green is mean, and blue is minimum.  Green and Blue lines correspond to minimum predator body masses that the regressions work on.  Red line marks predators that are 21kg.
+
+
+```{r, echo = FALSE}
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, plot.breaks = FALSE,
+             main = "Max, Mean, and Min Prey size",
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+
+points(pred.data$FO,pred.data$Radloff04.Preymax, col ="red")
+points(pred.data$FO,pred.data$Radloff04.Preymean, col ="blue")
+points(pred.data$FO,pred.data$Radloff04.Preymin, col ="darkgreen")
+
+legend("topleft", legend= c("Max Prey","Median Prey", "Min Prey"), 
+       col = c("red","blue","darkgreen"), pch = 16, fill=NA, border=FALSE,  cex=0.75, box.lty=1)
+
+```
+##red circles are max prey size
+##blue circles are mean prey size
+##green circles are min prey size
+
+```{r, echo=FALSE}
+plot(pred.data$BM_all_carnivoran[pred.data$BM_all_carnivoran >= log10(21)], 
+     pred.data$Radloff04.Preymax[pred.data$BM_all_carnivoran >= log10(21)],
+     xlim = c(log10(21),2.75), xaxp = c(-1,3,16), xlab = "Log10 Predator Body mass (kg, all carnivoran)",
+     ylim = c(0.5,3), yaxp = c(-2,3,20), ylab = "Log10 Estimated Prey body mass (kg)",
+     main = "Estimated Prey size for Carnivores >21 kg as per Radloff and du Toit 2004")
+points(pred.data$BM_all_carnivoran[pred.data$BM_all_carnivoran >= log10(21)], 
+     pred.data$Radloff04.Preymean[pred.data$BM_all_carnivoran >= log10(21)], col = "blue")
+points(pred.data$BM_all_carnivoran[pred.data$BM_all_carnivoran >= log10(21)], 
+     pred.data$Radloff04.Preymin[pred.data$BM_all_carnivoran >= log10(21)], col = "darkgreen")
+
+abline(v = log10(21), col = "red")
+```
+
+###Black circles are maximum prey sizes, green is mean, and blue is minimum. 
+
+```{r, echo = FALSE}
+pred.21up <- pred.data[pred.data$BM_all_carnivoran > log10(21),]
+
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, plot.breaks = FALSE,
+             main = "Max, Mean, and Min Prey size of >21 kg Predators",
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+
+points(pred.21up$FO,pred.21up$Radloff04.Preymax, col ="red")
+points(pred.21up$FO,pred.21up$Radloff04.Preymean, col ="blue")
+points(pred.21up$FO,pred.21up$Radloff04.Preymin, col ="darkgreen")
+
+legend("bottomright", legend= c("Max Prey","Median Prey", "Min Prey"), 
+       col = c("red","blue","darkgreen"), pch = 16, fill=NA, border=FALSE,  cex=0.75, box.lty=1)
+
+```
+##red circles are max prey size
+##blue circles are mean prey size
+##green circles are min prey size
+
+
+###########################################################################################
+#Van Valkenburgh etal 2016 The impact of large terrestrial carnivores on Pleistocene ecosystems
+
+```{r}
+#unlog body mass values
+#de log10 carnivore body masses
+yy <- 10^pred.21up$BM_all_carnivoran
+
+#Solitary Hunters
+pred.21up$solitary.acc.prey.upp <- log10(2.2425*yy-19.49)
+pred.21up$solitary.acc.prey.low <- log10(15.74*log(yy) - 33.379)
+pred.21up$solitary.max.prey     <- log10(504.74*log(yy) - 1166.6)
+
+#Group Hunters
+pred.21up$group.acc.prey.upp <- log10(204.78*log(yy) - 279.59)
+pred.21up$group.acc.prey.low <- log10(0.6869*yy + 2.4044)
+pred.21up$group.max.prey     <- log10(22.781*yy - 92.089)
+```
+
+```{r, echo = FALSE}
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, plot.breaks = FALSE,
+             main = "Max and Accepted Prey Prey size of Solitary Predators >21 kg",
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+
+#points(pred.21up$FO,pred.21up$solitary.acc.prey.upp, col ="red")
+#points(pred.21up$FO,pred.21up$solitary.acc.prey.low, col ="blue")
+#points(pred.21up$FO,pred.21up$solitary.max.prey, col ="darkgreen")
+
+max.quants <- getTraitQuants(pred.21up, traitCol = "solitary.max.prey",
+                             repIntTaxa = PredrepIntAll$RepsTaxa)
+acc.upper.quants <- getTraitQuants(pred.21up, traitCol = "solitary.acc.prey.upp",
+                                   repIntTaxa = PredrepIntAll$RepsTaxa)
+acc.lower.quants <- getTraitQuants(pred.21up, traitCol = "solitary.acc.prey.low",
+                                   repIntTaxa = PredrepIntAll$RepsTaxa)
+
+lines(rowMeans(intervals), max.quants[5,], col="darkgreen", lwd = 2)
+lines(rowMeans(intervals), acc.upper.quants[5,], col="red", lwd = 2)
+lines(rowMeans(intervals), acc.lower.quants[1,], col="blue", lwd = 2)
+
+legend("bottomright", legend= c("Max Prey Size","Accepted Prey (upper)", "Accepted Prey (lower)"), col = c("darkgreen", "red","blue"), pch = 16, fill=NA, border=FALSE,  cex=0.75, box.lty=1)
+```
+
+
+```{r, echo = FALSE}
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, 
+             this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, 
+             quants = bm_quants_ung,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, 
+             plot.breaks = FALSE,
+             main = "Max and Accepted Prey Prey size of Group Predators >21 kg",
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE,
+             ylim = c(min(measure.culled$bodyMass),max(pred.21up$group.max.prey)))
+
+#points(pred.21up$FO,pred.21up$group.acc.prey.upp, col ="red")
+#points(pred.21up$FO,pred.21up$group.acc.prey.low, col ="blue")
+#points(pred.21up$FO,pred.21up$group.max.prey, col ="darkgreen")
+
+max.quants <- getTraitQuants(pred.21up, traitCol = "group.max.prey",
+                             repIntTaxa = PredrepIntAll$RepsTaxa)
+acc.upper.quants <- getTraitQuants(pred.21up, traitCol = "group.acc.prey.upp",
+                                   repIntTaxa = PredrepIntAll$RepsTaxa)
+acc.lower.quants <- getTraitQuants(pred.21up, traitCol = "group.acc.prey.low",
+                                   repIntTaxa = PredrepIntAll$RepsTaxa)
+
+lines(rowMeans(intervals), max.quants[5,], col="darkgreen", lwd = 2)
+lines(rowMeans(intervals), acc.upper.quants[5,], col="red", lwd = 2)
+lines(rowMeans(intervals), acc.lower.quants[1,], col="blue", lwd = 2)
+
+legend("bottomright", legend= c("Max Prey Size","Accepted Prey (upper)", "Accepted Prey (lower)"), col = c("darkgreen", "red","blue"), pch = 16, fill=NA, border=FALSE,  cex=0.75, box.lty=1)
+```
+
+###############################################################################################
+#look into diversity of ungulates when seeing increases in largeer predators
+#determine what the ungulate bm distributions look like during these times
+
+
+nalma.intervals <- getNALMAIntervals(startDate = NULL, endDate = NULL)
+
+getRepIntData(measure.mat, 
+              col.nam = NULL,
+              occs,
+              int_length = 2,
+              int_min = 1,
+              int_max = 56,
+              do.parallel = FALSE, 
+              reps = 10,
+              do.subsample = FALSE, 
+              sub.type = "global", #c("global", "interval)
+              quota = NULL,
+              intOccs2 = NULL,
+              do.disparity = FALSE,
+              bootstrapSpecies = FALSE,
+              bootstrapSpeciesWithinIntervals = FALSE,
+              do.heuristic = TRUE,
+              extra.intvs = 0,
+              this.rank = "species",
+              do.rangethrough = TRUE,
+              save.reps = FALSE,
+              plotHist = FALSE)
+
+
+
+
+
+
+
+

@@ -1,0 +1,449 @@
+---
+title: "PPP Hadley Results"
+author: "Evan Doughty"
+date: "8/6/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE, include=FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+```
+
+```{r, include=FALSE}
+source("~/Dropbox/code/R/common_src/strat.R")
+source("~/Dropbox/code/R/common_src/occFns.R")
+source("~/Dropbox/code/R/common_src/sampling.R") 
+source("~/Dropbox/code/R/common_src/utils_marcot.R")
+source("~/Dropbox/code/R/common_src/CzTimescale.R") 
+source("~/Dropbox/Code/R/common_src/taxonomicEv.R")
+
+source('~/Dropbox/code/R/dentalMeasurements/src/src_dentalDataFns.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_bodyMassEstimation.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_ecologyAnalysisFns.R', chdir = TRUE)
+
+source('~/Dropbox/Code/Recreate Dental Plots Source 2021_6_2.R')
+require(stringr)
+```
+
+```{r, include=FALSE, include=FALSE}
+occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occs <- occs[!occs$order %in% c("Cetacea", "Desmostylia", "Sirenia"), ]
+occs <- occs[!occs$family %in% c("Allodelphinidae", "Balaenidae", "Balaenopteridae", "Delphinidae", "Desmatophocidae", "Desmostylidae", 
+                                 "Didelphidae","Dugongidae","Enaliarctidae", "Eschrichtiidae","Iniidae", "Kentriodontidae", "Kogiidae", 
+                                 "Odobenidae", "Otariidae", "Paleoparadoxiidae", "Phocidae", "Physeteridae", "Platanistidae", "Pontoporiidae", 
+                                 "Protocetidae", "Squalodontidae", "Ziphiidae"), ]
+occs$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = occs$accepted_name)	#replace spaces with underscores
+
+####################################################################################################################################
+
+#dental measures are in centimeters while body mass is logged kg
+measure.mat <- getMeasureMatWithBodyMasses()
+this.rank <- "species"
+if (this.rank=="genus") measure.mat <- makeOneGenusMatFromSpecimenMat(measure.mat)
+
+####################################################################################################################################
+#### reduces matrix to just the focal order(s)
+####################################################################################################################################
+
+# focal.order <- "Artiodactyla"
+# focal.order <- "Perissodactyla"
+focal.order <- c("Artiodactyla", "Perissodactyla")
+focal.family <- unique(occs[occs$order %in% focal.order,]$family)
+focal.family <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.family <- focal.family[!focal.family %in% ""]
+focal.family <- focal.family[order(focal.family)]
+
+bigList <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.family), c("order","family", "genus", "accepted_name")])
+bigList <- bigList[order(bigList$order, bigList$family, bigList$genus, bigList$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+shortFam <- sort(unique(bigList$family[bigList$family %in% focal.family]))	
+
+bigList$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigList$accepted_name)
+
+# matrix(measure.mat$taxon[!measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order]], ncol=1)
+# matrix(bigList$accepted_name[bigList$order %in% focal.order][! bigList$accepted_name[bigList$order %in% focal.order] %in% measure.mat$taxon], ncol=1)
+measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order], ]
+
+#remove added columns...cus why I set it to not do that but still gets through....
+#fix.columns<- c("taxon", "P2_L", "P2_W", "P3_L", "P3_W", "P4_L", "P4_W", "M1_L", "M1_W", "M2_L", "M2_W", "M3_L", "M3_W",
+# "p2_l", "p2_w", "p3_l", "p3_w", "p4_l", "p4_w", "m1_l", "m1_w", "m2_l", "m2_w", "m3_l", "m3_w",
+# "p4_a", "m1_a", "m2_a", "m3_a", "M2_A",
+# "family", "genus", "reg.vec", "bodyMass", "col.fam", "sym.fam")
+##
+#measure.mat <- measure.mat[,colnames(measure.mat) %in% fix.columns]
+
+#remove Megacerops curtus due to wierd placement on pca
+measure.culled <- measure.mat[!rownames(measure.mat) %in% "Megacerops_curtus",]
+
+
+archaic.ung <- read.csv("/Users/emdoughty/Dropbox/Code/ArchaicUngulate_UploadFile_2021_4_29.csv")
+
+archaic.Mat.tot <- getMeasureMatCondylarths(data.raw = archaic.ung, occs = occs, 
+                                            col.order = colnames(measure.culled), 
+                                            all.bm = FALSE,
+                                            regression = "ArchaicNonselenodonts")
+
+#write.csv(archaic.Mat.tot,"/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/ArchaicUngulateBodyMass.csv")
+
+measure.culled <- rbind(measure.culled, archaic.Mat.tot)
+measure.culled <- getDateTaxa(measure.mat = measure.culled, occs=occs, this.rank = "species")
+
+load("~/Dropbox/Code/Ungulate10Rep_BM_results_2021_7_19.RData")
+bm_quants_ung <- getTraitQuants(measure.mat = measure.culled, traitCol = "bodyMass", repIntTaxa = repIntAll$RepsTaxa)
+```
+
+```{r, include=FALSE, include=FALSE}
+pred.data <- read.csv("~/Dropbox/Code/R/Carnivore Paleobio Seminar/Predator_data_all.csv")
+
+#get column names to be comparable to ungulate data so not break anything
+colnames(pred.data) <- c("family", "taxon",	"max_ma","min_ma",	"m1L",	"rbl",	"BM_all_carnivoran",	"BM_extant_reg")
+
+pred.data$taxon <- gsub(pattern = "[[:space:]]", replacement = "_", x = pred.data$taxon)
+
+rownames(pred.data) <- pred.data$taxon
+
+#purge species wihtout dates or body mass
+#pred.data <- pred.data[complete.cases(pred.data),]
+
+#log bodymasses
+pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")] <- log10(pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")])
+
+focal.orderPred <- c("Carnivora", "Creodonta","Hyaenodonta","NO_ORDER_SPECIFIED")
+occsPred <- occs[occs$order %in% focal.orderPred,]
+focal.familyPred <- unique(occs[occs$order %in% focal.orderPred,]$family)
+focal.familyPred <- c(as.character(focal.familyPred), "Viverravidae","Hyaenodontidae","NO_FAMILY_SPECIFIED")
+#focal.familyPred <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.familyPred <- focal.familyPred[!focal.familyPred%in% ""]
+focal.familyPred <- focal.familyPred[order(focal.familyPred)]
+
+bigListPred <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.familyPred), c("order","family", "genus", "accepted_name")])
+bigListPred <- bigListPred[order(bigListPred$order, bigListPred$family, bigListPred$genus, bigListPred$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+
+bigListPred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigListPred$accepted_name)
+
+bigListPred <- bigListPred[bigListPred$accepted_name %in% pred.data$taxon,]
+
+shortFamPred <- sort(unique(bigListPred$family[bigListPred$family %in% focal.familyPred]))	
+
+pred.data <- getDateTaxa(measure.mat = pred.data, occs=occsPred, this.rank = "species")
+
+#write.csv(pred.data, file = "~/Dropbox/Code/Pred_data_check.csv")
+
+pred.data <- pred.data[complete.cases(pred.data),] #some species have body mass but no rbl
+
+```
+
+```{r, include = FALSE, include=FALSE}
+#ungulate
+load("~/Dropbox/Code/Ungulate10Rep_BM_results_2021_7_19.RData")
+
+#carnivore
+load("~/Dropbox/Code/AllCarniv100RepHadleyOutput_2021_7_16.Rdata")
+load("~/Dropbox/Code/Carnivore100RepTaxHadleyOutput_2021_7_19.Rdata")
+```
+
+# Number of breaks
+```{r, echo = FALSE, include=FALSE}
+par(mfrow=c(2,1), mar=c(5,4,4,1))
+#plotNumberShiftPerRep(hist1.dat = optList_tax_allReps, hist1.breaks = seq(-0.5, 10, 1.0), hist1.col = "orchid4", hist1.main = "Number of taxonomic shifts in each rep (ungulate)", hist1.xlab = "Number of Shifts", hist1.xlim = c(0,10),
+ #                     plothist2 = TRUE, hist2.dat = optList_bm_allReps, hist2.breaks = seq(-0.5, 11.5, 1.0), hist2.col = "firebrick4", hist2.main = "Number of body mass shifts in each rep (ungulate)", hist2.xlab = "Number of Shifts", hist2.xlim = c(0,10))
+#plotNumberShiftPerRep(hist1.dat = optList_bm_allReps, hist1.breaks = seq(-0.5, 11.5, 1.0), hist1.col = "firebrick4", hist1.main = "Number of body mass shifts in each rep (extent_reg)", hist1.xlab = "Number of Shifts", hist1.xlim = c(0,10),
+#                      plothist2 = FALSE)
+plotNumberShiftPerRep(hist1.dat = optListBMAll$OptListTraitAllReps, hist1.breaks = seq(-0.5, 10, 1.0), hist1.col = "orchid4", hist1.main = "Number of body mass shifts in each rep (ungulate)", hist1.xlab = "Number of Shifts", hist1.xlim = c(0,10))
+```
+
+```{r, echo = FALSE, include=FALSE}
+par(mfrow=c(2,1), mar=c(5,4,4,1))
+plotNumberShiftPerRep(hist1.dat = optListTaxAllPred$OptListTaxAllReps, hist1.breaks = seq(-0.5, 10, 1.0), hist1.col = "orchid4", hist1.main = "Number of taxonomic shifts in each rep", hist1.xlab = "Number of Shifts", hist1.xlim = c(0,10),
+                      plothist2 = TRUE, hist2.dat = optListBMAllCarniv$OptListTraitAllReps, hist2.breaks = seq(-0.5, 11.5, 1.0), hist2.col = "firebrick4", hist2.main = "Number of body mass shifts in each rep (all_Carnivoran)", hist2.xlab = "Number of Shifts", hist2.xlim = c(0,10))
+#plotNumberShiftPerRep(hist1.dat = optListBMAllextantreg$OptListTraitAllReps, hist1.breaks = seq(-0.5, 11.5, 1.0), hist1.col = "firebrick4", hist1.main = "Number of body mass shifts in each rep (extent reg)", hist1.xlab = "Number of Shifts", hist1.xlim = c(0,10),
+#                      plothist2 = FALSE)
+```
+
+#location of breaks between runs
+```{r, echo = FALSE, include=FALSE}
+par(mfrow=c(2,1), mar=c(3.9,4,0.5,0.5))#, mgp=c(2, 1,0))
+plotHistShiftinInterval(optList = optListBMAll$OptListTraitAllReps,
+                        intervals = intervals,
+                        reps = 10,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (ungulate)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "firebrick4",
+                        border = "firebrick1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+
+bm_quants_ung <- getTraitQuants(measure.mat = measure.culled, traitCol = "bodyMass", repIntTaxa = repIntAll$RepsTaxa)
+
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1,66,2), optList_bm_median = optListBMAll$OptListTraitMedian, plot.breaks = TRUE,
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", xlim = c(max(intervals), min(intervals)), xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE, manual.breaks = c(63,51,47,39,33,25,17,5))
+```
+
+
+```{recho = FALSE, include=FALSE}
+par(mfrow=c(2,1), mar=c(4, 4, 1, 1))
+plotHistShiftinInterval(optList = optListTaxAllPred$OptListTaxAllReps,
+                        intervals = intervals,
+                        reps = 100,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Taxonomic Distribution Shift",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "orchid4",
+                        border = "orchid1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+plotHistShiftinInterval(optList = optListBMAllCarniv$OptListTraitAllReps,
+                        intervals = intervals,
+                        reps = 100,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (allCarniv)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "firebrick4",
+                        border = "firebrick1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+
+```
+
+#Carnivore Taxonomic Richness
+```{r,echo = FALSE}
+par(mfrow=c(1,1), mar=c(4, 4, 1, 1))
+plotTaxonThroughTime(repIntTaxa = PredrepIntAll$RepsTaxa, bigList = bigListPred, 
+                     shortFam = shortFamPred, 
+                     taxCube = optListTaxAllPred$taxCube, intervals = intervals,
+                     optList_tax_median = optListTaxAllPred$OptListTaxMedian, 
+                     plot.breaks = TRUE, manual.breaks = c(57,39,33,21,5), 
+                     xlim = c(max(intervals), min(intervals))
+                     ,legend = FALSE)
+
+```
+```{r,echo = FALSE}
+par(mfrow=c(1,1), mar=c(4, 4, 1, 1))
+plotTaxonThroughTime(repIntTaxa = PredrepIntAll$RepsTaxa, bigList = bigListPred, 
+                     shortFam = shortFamPred, 
+                     taxCube = optListTaxAllPred$taxCube, intervals = intervals,
+                     optList_tax_median = optListTaxAllPred$OptListTaxMedian, 
+                     plot.breaks = TRUE, manual.breaks = c(57,39,33,21,5), 
+                     xlim = c(max(intervals), min(intervals))
+                     ,legend = FALSE)
+
+```
+
+
+```{r,echo = FALSE}
+shoulderPlot(measure.mat = pred.data, plot.y = "BM_all_carnivoran", intervals = intervals, occs = occs, 
+             bigList = bigListPred, shortFam = shortFamPred, repIntTaxa = PredrepIntAll$RepsTaxa, quants = bm_quantsPred_allcarniv,
+             optList_bm_median = optListBMAllCarniv$OptListTraitMedian, plot.breaks = TRUE, manual.breaks = c(57,41,25,11), this.rank = "species",
+             ylab = "log Bodymass (kg) (all_carnivoran)", xlab = "Time (Ma)", xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+lines(rowMeans(intervals), bm_quantsPred_allcarniv[3,], col=alphaColor("goldenrod1", 0.5), lwd=5)
+lines(rowMeans(intervals), bm_quantsPred_allcarniv[3,], col=alphaColor("darkorange4", 1.0), lwd=3)
+points(rowMeans(intervals), bm_quantsPred_allcarniv[3,], col=alphaColor("darkorange1", 0.5), cex=0.5)
+```
+
+
+#Compare Predator and Prey
+
+```{r, echo = FALSE}
+par(mfrow=c(2,1), mar=c(3.9,4,0.5,0.5))#, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = bm_quants_ung,
+             intervals = makeIntervals(1,66,2), optList_bm_median = optListBMAll$OptListTraitMedian, plot.breaks = TRUE,
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", xlim = c(max(intervals), min(intervals)), xaxp = c(70,0,14),                  cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE, manual.breaks = c(63,51,47,39,33,25,17,5))
+shoulderPlot(measure.mat = pred.data, plot.y = "BM_all_carnivoran", intervals = intervals, occs = occs, 
+             bigList = bigListPred, shortFam = shortFamPred, repIntTaxa = PredrepIntAll$RepsTaxa, quants = bm_quantsPred_allcarniv,
+             optList_bm_median = optListBMAllCarniv$OptListTraitMedian, plot.breaks = TRUE, this.rank = "species",
+             ylab = "log Bodymass (kg) (all_carnivoran)", xlab = "Time (Ma)", xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE, manual.breaks = c(57,41,25,11))
+
+```
+
+#Carnivore Taxonomic Richness
+```{r,echo = FALSE}
+par(mfrow=c(1,1), mar=c(4, 4, 1, 1))
+plotTaxonThroughTime(repIntTaxa = PredrepIntAll$RepsTaxa, bigList = bigListPred, 
+                     shortFam = shortFamPred, 
+                     taxCube = optListTaxAllPred$taxCube, intervals = intervals,
+                     optList_tax_median = optListTaxAllPred$OptListTaxMedian, 
+                     plot.breaks = TRUE, manual.breaks = c(57,39,33,21,5), 
+                     xlim = c(max(intervals), min(intervals))
+                     ,legend = FALSE)
+
+```
+```{r,echo = FALSE}
+par(mfrow=c(1,1), mar=c(4, 4, 1, 1))
+plotTaxonThroughTime(repIntTaxa = PredrepIntAll$RepsTaxa, bigList = bigListPred, 
+                     shortFam = shortFamPred, 
+                     taxCube = optListTaxAllPred$taxCube, intervals = intervals,
+                     optList_tax_median = optListTaxAllPred$OptListTaxMedian, 
+                     plot.breaks = TRUE, manual.breaks = c(57,39,33,21,5), 
+                     xlim = c(max(intervals), min(intervals))
+                     ,legend = FALSE)
+
+```
+
+#Distributions within Regimes
+###Ungulate
+```{r, echo = FALSE, include=FALSE}
+regimeHist_v2(repIntTaxa = repIntAll$RepsTaxa, 
+              trait.Col = "bodyMass",
+              breaks = c(63,51,47,39,33,25,17,5), 
+              trait.breaks=  c(-1, 0.69897, 1.39794, 2.176091, 2.69897, 3.0, 5),
+              optList=optListBMAll$OptListTraitMedian, 
+              thisMat = measure.culled, 
+              netFreq = TRUE, 
+              regimeFreq=FALSE,
+              netPlotType = "pos/neg", 
+              plot.together = FALSE,
+              plot.quartz = FALSE,
+              plot.histo = "withinregime")
+
+```
+
+```{r, echo = FALSE, include=FALSE}
+regimeHist_v2(repIntTaxa = repIntAll$RepsTaxa, 
+              trait.Col = "bodyMass",
+              breaks = c(63,51,47,39,33,25,17,5), 
+              trait.breaks=  c(-1, 0.69897, 1.39794, 2.176091, 2.69897, 3.0, 5),
+              optList=optListBMAll$OptListTraitMedian, 
+              thisMat = measure.culled, 
+              netFreq = TRUE, 
+              regimeFreq=FALSE,
+              netPlotType = "pos/neg", 
+              plot.together = FALSE,
+              plot.quartz = FALSE,
+              plot.histo = "btwnregime")
+
+```
+###Carnivores...for some reason will not plot correctly in markdown.  See associated files.
+```{r, echo = FALSE, include=FALSE}
+regimeHist_v2(repIntTaxa = PredrepIntAll$RepsTaxa, 
+              trait.Col = "BM_all_carnivoran",
+              breaks = c(57,41,25,11), 
+              trait.breaks= c(-2, 0, 0.845098, 1.322219, 2, 4),
+              optList=optListBMAllCarniv$OptListTraitMedian, 
+              thisMat = pred.data, 
+              netFreq = TRUE, 
+              regimeFreq=FALSE,
+              netPlotType = "pos/neg", 
+              plot.together = FALSE,
+              plot.quartz = TRUE,
+              plot.histo = "withinregime")
+```
+
+```{r, echo = FALSE, include=FALSE}
+regimeHist_v2(repIntTaxa = PredrepIntAll$RepsTaxa, 
+              trait.Col = "BM_all_carnivoran",
+              breaks = c(57,41,25,11), 
+              trait.breaks= c(-2, 0, 0.845098, 1.322219, 2, 4),
+              optList=optListBMAllCarniv$OptListTraitMedian, 
+              thisMat = pred.data, 
+              netFreq = TRUE, 
+              regimeFreq=FALSE,
+              netPlotType = "pos/neg", 
+              plot.together = FALSE,
+              plot.quartz = TRUE,
+              plot.histo = "btwnregime")
+
+```
+#Predators >21 Kg
+```{r, echo = FALSE, include=FALSE}
+load("~/Dropbox/Code/AllCarniv_21up_1000RepHadleyOutput_2021_7_22.Rdata")
+
+pred.21up <- pred.data[pred.data$BM_all_carnivoran > log10(21),]
+pred.21up <- pred.data[pred.data$BM_all_carnivoran > log10(21),]
+pred.100up <- pred.data[pred.data$BM_all_carnivoran > log10(100),]
+pred.200up <- pred.data[pred.data$BM_all_carnivoran > log10(200),]
+
+shoulderPlot(measure.mat = pred.data, plot.y = "BM_all_carnivoran", intervals = intervals, occs = occs, 
+             bigList = bigListPred, shortFam = shortFamPred, repIntTaxa = PredrepIntAll$RepsTaxa, quants = NULL,
+             optList_bm_median = NULL, plot.breaks = FALSE, this.rank = "species",
+             ylab = "log Bodymass (kg) (all_carnivore)", xlab = "Time (Ma)", 
+             xlim = c(67, 1), xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = FALSE)
+plot.y <- "BM_all_carnivoran"
+
+for (i in seq_len(nrow(pred.21up))) {
+   if (is.finite(pred.21up$FO[i]) & is.finite(pred.21up$LO[i]) & pred.21up$FO[i] != pred.21up$LO[i]) lines(x=pred.21up[i,c("FO","LO")], y=c(pred.21up[,plot.y][i], pred.21up[,plot.y][i]), lwd=0.75, pch=21, col=alphaColor("red", 0.5)) #alphaColor(orderColors[i], 0.5)
+}
+points(pred.21up[complete.cases(pred.21up[ ,c("FO","LO")]) & pred.21up$FO == pred.21up$LO, c("FO", plot.y)], pch=21, col=alphaColor("red", 0.5), cex=0.25) #this line is not generating the proper output for the final graph due to c("FO","bodyMass") causing a  "undefined columns selected" error
+abline(h = log10(21), col = "red")
+
+for (i in seq_len(nrow(pred.100up))) {
+  if (is.finite(pred.100up$FO[i]) & is.finite(pred.100up$LO[i]) & pred.100up$FO[i] != pred.100up$LO[i]) lines(x=pred.100up[i,c("FO","LO")], y=c(pred.100up[,plot.y][i], pred.100up[,plot.y][i]), lwd=0.75, pch=21, col=alphaColor("blue", 0.5)) #alphaColor(orderColors[i], 0.5)
+}
+points(pred.100up[complete.cases(pred.100up[ ,c("FO","LO")]) & pred.100up$FO == pred.100up$LO, c("FO", plot.y)], pch=21, col=alphaColor("blue", 0.5), cex=0.25) #this line is not generating the proper output for the final graph due to c("FO","bodyMass") causing a  "undefined columns selected" error
+abline(h = log10(100), col = "blue")
+
+for (i in seq_len(nrow(pred.200up))) {
+    if (is.finite(pred.200up$FO[i]) & is.finite(pred.200up$LO[i]) & pred.200up$FO[i] != pred.200up$LO[i]) lines(x=pred.200up[i,c("FO","LO")], y=c(pred.200up[,plot.y][i], pred.200up[,plot.y][i]), lwd=0.75, pch=21, col=alphaColor("green", 0.5)) #alphaColor(orderColors[i], 0.5)
+}
+points(pred.200up[complete.cases(pred.200up[ ,c("FO","LO")]) & pred.200up$FO == pred.200up$LO, c("FO", plot.y)], pch=21, col=alphaColor("green", 0.5), cex=0.25) #this line is not generating the proper output for the final graph due to c("FO","bodyMass") causing a  "undefined columns selected" error
+abline(h = log10(200), col = "green")
+```
+
+```{r}
+print(paste("Preds >=21kg", nrow(pred.21up), sep=": "))
+print(paste("Preds >=100kg", nrow(pred.100up), sep=": "))
+print(paste("Preds >=200kg", nrow(pred.200up), sep=": "))
+```
+
+```{r,echo = FALSE, include = FALSE}
+par(mfrow=c(1,1), mar=c(3.9,4,0.5,0.5))#, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = measure.culled, plot.y = "bodyMass", occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntAll$RepsTaxa, quants = NULL,
+             intervals = makeIntervals(1, 66, 2), optList_bm_median = optList_bm_median, plot.breaks = FALSE,
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", 
+             xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+abline(h = log10(21), col = "red")
+abline(h = log10(100), col = "blue")
+abline(h = log10(200), col = "green")
+```
+
+##hadley for >21 kg
+```{r, echo = FALSE, include=FALSE}
+par(mfrow=c(2,1), mar=c(4, 4, 1, 1))
+plotNumberShiftPerRep(hist1.dat = optListBMAllCarniv$OptListTraitAllReps, hist1.breaks = seq(-0.5, 10, 1.0), hist1.col = "orchid4", hist1.main = "Number of body mass shifts in each rep (all_Carnivoran)", hist1.xlab = "Number of Shifts", hist1.xlim = c(0,10))
+
+plotHistShiftinInterval(optList = optListBMAllCarniv$OptListTraitAllReps,
+                        intervals = intervals,
+                        reps = 1000,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (allCarniv)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "firebrick4",
+                        border = "firebrick1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+```
+
+```{r, echo = FALSE}
+shoulderPlot(measure.mat = pred.21up, plot.y = "BM_all_carnivoran", intervals = intervals, occs = occs, 
+             bigList = bigListPred, shortFam = shortFamPred, repIntTaxa = PredrepIntAll$RepsTaxa, quants = bm_quantsPred_allcarniv,
+             optList_bm_median = optListBMAllCarniv$OptListTraitMedian, plot.breaks = TRUE, manual.breaks = c(25), this.rank = "species",
+             ylab = "log Bodymass (kg) (all_carnivoran)", xlab = "Time (Ma)", xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = FALSE)
+lines(rowMeans(intervals), bm_quantsPred_allcarniv[3,], col=alphaColor("goldenrod1", 0.5), lwd=5)
+lines(rowMeans(intervals), bm_quantsPred_allcarniv[3,], col=alphaColor("darkorange4", 1.0), lwd=3)
+points(rowMeans(intervals), bm_quantsPred_allcarniv[3,], col=alphaColor("darkorange1", 0.5), cex=0.5)
+```
