@@ -1,0 +1,720 @@
+---
+title: "GSA Presentation Figures"
+author: "Evan Doughty"
+date: "9/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+source("~/Dropbox/code/R/common_src/strat.R")
+source("~/Dropbox/code/R/common_src/occFns.R")
+source("~/Dropbox/code/R/common_src/sampling.R") 
+source("~/Dropbox/code/R/common_src/utils_marcot.R")
+source("~/Dropbox/code/R/common_src/CzTimescale.R") 
+source("~/Dropbox/Code/R/common_src/taxonomicEv.R")
+
+source('~/Dropbox/code/R/dentalMeasurements/src/src_dentalDataFns.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_bodyMassEstimation.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_ecologyAnalysisFns.R', chdir = TRUE)
+
+source('~/Dropbox/Code/Recreate Dental Plots Source 2021_6_2.R')
+
+####################################################################################################################################
+
+#occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&lngmin=-125.98&lngmax=-93.40&latmin=27&latmax=55.7&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occs <- occs[!occs$order %in% c("Cetacea", "Desmostylia", "Sirenia"), ]
+occs <- occs[!occs$family %in% c("Allodelphinidae", "Balaenidae", "Balaenopteridae", "Delphinidae", "Desmatophocidae", "Desmostylidae", 
+                                 "Didelphidae","Dugongidae","Enaliarctidae", "Eschrichtiidae","Iniidae", "Kentriodontidae", "Kogiidae", 
+                                 "Odobenidae", "Otariidae", "Paleoparadoxiidae", "Panotariidae","Phocidae", "Physeteridae", "Platanistidae", "Pontoporiidae", 
+                                 "Protocetidae", "Squalodontidae", "Ziphiidae"), ]
+occs$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = occs$accepted_name)	#replace spaces with underscores
+
+####################################################################################################################################
+
+#dental measures are in centimeters while body mass is logged kg
+measure.mat <- getMeasureMatWithBodyMasses()
+#write.csv(measure.mat, file = "~/Dropbox/Code/measure_mat.csv")
+
+this.rank <- "species"
+if (this.rank=="genus") measure.mat <- makeOneGenusMatFromSpecimenMat(measure.mat)
+
+####################################################################################################################################
+#### reduces matrix to just the focal order(s)
+####################################################################################################################################
+
+# focal.order <- "Artiodactyla"
+# focal.order <- "Perissodactyla"
+focal.order <- c("Artiodactyla", "Perissodactyla")
+focal.family <- unique(occs[occs$order %in% focal.order,]$family)
+focal.family <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.family <- focal.family[!focal.family %in% ""]
+focal.family <- focal.family[order(focal.family)]
+
+bigList <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.family), c("order","family", "genus", "accepted_name")])
+bigList <- bigList[order(bigList$order, bigList$family, bigList$genus, bigList$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+shortFam <- sort(unique(bigList$family[bigList$family %in% focal.family]))	
+
+bigList$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigList$accepted_name)
+
+# matrix(measure.mat$taxon[!measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order]], ncol=1)
+# matrix(bigList$accepted_name[bigList$order %in% focal.order][! bigList$accepted_name[bigList$order %in% focal.order] %in% measure.mat$taxon], ncol=1)
+#measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order], ]
+measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$family %in% focal.family], ]
+
+#remove added columns...cus why I set it to not do that but still gets through....
+#fix.columns<- c("taxon", "P2_L", "P2_W", "P3_L", "P3_W", "P4_L", "P4_W", "M1_L", "M1_W", "M2_L", "M2_W", "M3_L", "M3_W",
+# "p2_l", "p2_w", "p3_l", "p3_w", "p4_l", "p4_w", "m1_l", "m1_w", "m2_l", "m2_w", "m3_l", "m3_w",
+# "p4_a", "m1_a", "m2_a", "m3_a", "M2_A",
+# "family", "genus", "reg.vec", "bodyMass", "col.fam", "sym.fam")
+##
+#measure.mat <- measure.mat[,colnames(measure.mat) %in% fix.columns]
+
+#remove Megacerops curtus due to wierd placement on pca
+
+#measure.culled <- measure.mat[!rownames(measure.mat) %in% "Megacerops_curtus",]
+measure.culled <- measure.mat
+
+archaic.ung <- read.csv("/Users/emdoughty/Dropbox/Code/ArchaicUngulate_UploadFile_2021_4_29.csv")
+
+archaic.Mat.tot <- getMeasureMatCondylarths(data.raw = archaic.ung, occs = occs, 
+                                            col.order = colnames(measure.culled), 
+                                            all.bm = FALSE,
+                                            regression = "ArchaicNonselenodonts")
+
+#write.csv(archaic.Mat.tot,"/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/ArchaicUngulateBodyMass.csv")
+
+measure.mat <- rbind(measure.culled, archaic.Mat.tot)
+```
+
+```{r}
+
+pred.data <- read.csv("~/Dropbox/Code/R/Carnivore Paleobio Seminar/Predator_data_all.csv")
+colnames(pred.data) <- c("family", "taxon",	"max_ma","min_ma",	"m1L",	"rbl", "bodyMass", 	"BM_extant_reg") #"BM_all_carnivoran","BM_extant_reg")
+pred.data$taxon <- gsub(pattern = "[[:space:]]", replacement = "_", x = pred.data$taxon)
+rownames(pred.data) <- pred.data$taxon
+
+pred.data[,c("bodyMass",	"BM_extant_reg")] <- log10(pred.data[,c("bodyMass",	"BM_extant_reg")])
+pred.data <- pred.data[is.finite(pred.data$bodyMass),]
+
+focal.order.pred <- c("Carnivora", "Creodonta","Hyaenodonta")
+#occsPred <- occs[occs$order %in% focal.orderPred,]
+focal.family.pred <- unique(occs[occs$order %in% focal.order.pred,]$family)
+add.family <- c("Viverravidae")
+
+focal.family.pred <- c(as.character(focal.family.pred), add.family)
+focal.family.pred <- focal.family[!focal.family.pred %in% ""]
+focal.family.pred <- focal.family[order(focal.family.pred)]
+
+bigList.pred <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$order %in% focal.order.pred), c("order","family", "genus", "accepted_name")])
+bigList.cond <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% add.family), c("order","family", "genus", "accepted_name")])
+bigList.pred <- rbind(bigList,bigList.cond)
+
+bigList.pred <- bigList.pred[order(bigList.pred$order, bigList.pred$family, bigList.pred$genus, bigList.pred$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+shortFam.pred <- sort(unique(bigList.pred$family[bigList.pred$family %in% focal.family.pred]))	
+
+bigList.pred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigList.pred$accepted_name)
+#pred.data <- pred.data[pred.data$taxon %in% bigList$accepted_name[bigList$family %in% shortFam], ]
+measure.mat.pred <- pred.data[pred.data$taxon %in% bigList$accepted_name[bigList$family %in% shortFam], ]
+measure.mat.pred <- measure.mat.pred[is.finite(measure.mat.pred$bodyMass),]
+```
+
+```{r}
+
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/Taxon_handleyResult_ungulates_SampleStandardized=TRUE_Reps=1000Jonathans_MacBook_Pro.local##------ Mon Sep  6 21:16:19 2021 ------##.Rdata")
+load("/Users/emdoughty/Dropbox/Code/R/Results/Taxon_handleyResult_ungulates_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Sep 11 05:29:03 2021 ------##.Rdata")
+repIntTaxa_ung <- repIntTaxa
+repIntOccs_ung <- repIntOccs
+taxCube_ung <- taxCube
+optList_tax_median_ung <- optList_tax_median
+optList_tax_allReps_ung <- optList_tax_allReps
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/BM_handleyResult_ungulates_SampleStandardized=TRUE_Reps=1000Jonathans_MacBook_Pro.local##------ Mon Sep  6 22:10:28 2021 ------##.Rdata")
+load("/Users/emdoughty/Dropbox/Code/R/Results/BM_handleyResult_ungulates_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Sep 11 09:56:37 2021 ------##.Rdata")
+countCube_ung <- countCube
+optList_bm_median_ung <- optList_bm_median
+optList_bm_allReps_ung <- optList_bm_allReps
+bm_quants_ung <- apply(sapply(repIntTaxa_ung, function(y) sapply(y, function(x) quantile(measure.mat[x,"bodyMass"], probs=c(0, 0.25, 0.5, 0.75, 1.0), na.rm=TRUE)), simplify = "array"), c(1,2), median, na.rm=TRUE)
+```
+
+```{r}
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/Taxon_handleyResult_carnivores_SampleStandardized=FALSE_Reps=1000Armageddon_2.local##------ Wed Sep  8 03:30:45 2021 ------##.Rdata")
+load("/Users/emdoughty/Dropbox/Code/R/Results/Taxon_handleyResult_carnivores_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Oct  2 11:28:32 2021 ------##.Rdata")
+repIntTaxa_pred <- repIntTaxa
+repIntOccs_pred <- repIntOccs
+taxCube_pred <- taxCube
+optList_tax_median_pred <- optList_tax_median
+optList_tax_allReps_pred <- optList_tax_allReps
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/BM_handleyResult_carnivores_SampleStandardized=FALSE_Reps=1000Armageddon_2.local##------ Wed Sep  8 04:43:09 2021 ------##.Rdata")
+load("/Users/emdoughty/Dropbox/Code/R/Results/BM_handleyResult_carnivores_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Oct  2 15:22:04 2021 ------##.Rdata")
+countCube_pred <- countCube
+optList_bm_median_pred <- optList_bm_median
+optList_bm_allReps_pred <- optList_bm_allReps
+bm_quants_pred <- apply(sapply(repIntTaxa_pred, function(y) sapply(y, function(x) quantile(pred.data[x,"bodyMass"], probs=c(0, 0.25, 0.5, 0.75, 1.0), na.rm=TRUE)), simplify = "array"), c(1,2), median, na.rm=TRUE)
+```
+
+```{r}
+  int_length <- 2
+  intervals <- makeIntervals(1, 64, int_length)
+  intList <- listifyMatrixByRow(intervals)
+```
+
+```{r}
+##Ungulate vs Carnivores
+#quartz(width=6.89)
+par(mfrow=c(2,1), mar=c(3.9,4,0.5,0.5))#, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = measure.mat, plot.y = "bodyMass", intervals = intervals, occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntTaxa_ung, quants = bm_quants_ung,
+             optList_bm_median = optList_bm_allReps_ung, plot.breaks = FALSE,
+             ylab = "log bodymass (kg) (ungulate)", xlab = "Time (Ma)", xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+shoulderPlot(measure.mat = pred.data, plot.y = "bodyMass", intervals = intervals, occs = occs, this.rank = "species", 
+             bigList = bigList.pred, shortFam = shortFam.pred, repIntTaxa = repIntTaxa_pred, quants = bm_quants_pred,
+             optList_bm_median = optList_bm_allReps_pred, plot.breaks = FALSE,
+             ylab = "log Bodymass (kg) (Carnivores)", xlab = "Time (Ma)", xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE)
+
+```
+
+#determine which breaks were the most common
+```{r}
+par(mfrow = c(2,1))
+plotHistShiftinInterval(optList = optList_bm_allReps_ung,
+                        intervals = intervals,
+                        reps = 10000,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (Ungulate)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "firebrick4",
+                        border = "firebrick1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+plotHistShiftinInterval(optList = optList_bm_allReps_pred,
+                        intervals = intervals,
+                        reps = 10000,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (Predator)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "firebrick4",
+                        border = "firebrick1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+```
+
+
+```{r}
+##Ungulate vs Carnivores
+#quartz(width=6.89)
+par(mfrow=c(2,1), mar=c(4,4,0.5,0.5))#, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = measure.mat, plot.y = "bodyMass", intervals = intervals, occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntTaxa_ung, quants = bm_quants_ung,
+             optList_bm_median = optList_bm_median_ung,  specOcc.col = "gray0", specOcc.alpha = 0.5,
+             plot.breaks = TRUE, manual.breaks = c(61, 57, 51, 39, 33, 25, 5), break.text = TRUE, break.col = "blue4",
+             ylab = "log bodymass (kg)", xlab = "Time (Ma)", xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE,
+             col.axis = "black", col.lab = "black", poly.col = "deepskyblue4", median.col = c("darkturquoise", "deepskyblue4", "deepskyblue1"))
+
+#par(mfrow=c(2,1), mar=c(4,4,0.5,0.5))#, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = pred.data, plot.y = "bodyMass", intervals = intervals, occs = occs, this.rank = "species", 
+             bigList = bigList.pred, shortFam = shortFam.pred, repIntTaxa = repIntTaxa_pred, quants = bm_quants_pred,
+             optList_bm_median = optList_bm_median_pred, 
+             plot.breaks = TRUE, manual.breaks = c(57, 41, 25), break.text = TRUE, break.col = "firebrick4",
+             ylab = "log Bodymass (kg)", xlab = "Time (Ma)", xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE,
+             col.axis = "black", col.lab = "black", poly.col = "darkorange4", median.col = c("goldenrod1", "darkorange4", "darkorange1"))
+```
+
+#Diversity Curves
+
+
+Correlation Matrix
+```{r}
+rep.species <- getRepIntData(#bigList, 
+  #col.nam = NULL,
+  occs=occs,
+  intervals = intervals,
+  int_length = 2,
+  int_min = 1,
+  int_max = 95,
+  do.parallel = FALSE, 
+  reps = 1,
+  this.rank = "species",
+  do.rangethrough = TRUE)
+
+pred.data <- read.csv("~/Dropbox/Code/R/Carnivore Paleobio Seminar/Predator_data_all.csv")
+colnames(pred.data) <- c("family", "taxon",	"max_ma","min_ma",	"m1L",	"rbl",	"BM_all_carnivoran",	"BM_extant_reg")
+pred.data$taxon <- gsub(pattern = "[[:space:]]", replacement = "_", x = pred.data$taxon)
+rownames(pred.data) <- pred.data$taxon
+
+pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")] <- log10(pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")])
+
+focal.orderPred <- c("Carnivora", "Creodonta","Hyaenodonta")
+occsPred <- occs[occs$order %in% focal.orderPred,]
+focal.familyPred <- unique(occs[occs$order %in% focal.orderPred,]$family)
+focal.familyPred <- c(as.character(focal.familyPred), "Viverravidae")
+
+focal.familyPred <- focal.familyPred[!focal.familyPred%in% ""]
+focal.familyPred <- focal.familyPred[order(focal.familyPred)]
+
+bigListPred <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.familyPred), c("order","family", "genus", "accepted_name")])
+bigListPred <- bigListPred[order(bigListPred$order, bigListPred$family, bigListPred$genus, bigListPred$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+
+bigListPred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigListPred$accepted_name)
+bigListPred <- bigListPred[bigListPred$accepted_name %in% pred.data$taxon,]
+shortFamPred <- sort(unique(bigListPred$family[bigListPred$family %in% focal.familyPred]))	
+
+pred.data <- getDateTaxa(measure.mat = pred.data, occs=occsPred, this.rank = "species")
+pred.data <- pred.data[complete.cases(pred.data),]
+
+intervals
+test.pred <- matrix(nrow = nrow(pred.data), ncol = nrow(intervals))
+colnames(test.pred) <- rownames(intervals)
+rownames(test.pred) <- rownames(pred.data)
+
+#sort into bins using a AND(base date) or AND(top date) style filter
+#may need to do rangethrough if using small bins.  i.e. 2 Ma bins may fall between FO and LO and not be filtered
+
+#maybe could have set to 
+###replace start and end dates with the interval name, 
+###take unique from those columns
+###index to fill those columns with a 1 for that species
+###do rangethrough if needed
+
+for(xx in seq(1, nrow(test.pred),1))
+{
+  FO <- pred.data[rownames(test.pred)[xx],"max_ma"]
+  LO <- pred.data[rownames(test.pred)[xx],"min_ma"]
+  
+  for(yy in seq(1, ncol(test.pred),1))
+  {
+    
+    int.top <- intervals[rownames(intervals) %in% colnames(test.pred)[yy],]$ageTop
+    int.base <- intervals[rownames(intervals) %in% colnames(test.pred)[yy],]$ageBase
+    if(FO < int.base & FO >= int.top) test.pred[xx,yy] <- 1
+    if(LO < int.base & LO >= int.top) test.pred[xx,yy] <- 1
+  }
+  #do rangethrough
+  col.index <- which(test.pred[xx,] >= 1)
+  if(length(col.index) > 1) test.pred[xx,seq(col.index[1], col.index[2])] <- 1
+}
+
+carniv.Diversity <- colSums(test.pred, na.rm = TRUE)
+
+#lines(midpoint,carniv.Diversity)
+
+#inf,0, 0.845098, 1.322219, 2,inf
+
+pred.1low <- pred.data[pred.data$BM_all_carnivoran <= 0,]
+predDiv.1low <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.1low),], na.rm = TRUE)
+
+pred.1to7 <- pred.data[pred.data$BM_all_carnivoran > 0 & pred.data$BM_all_carnivoran <= 0.845098,]
+predDiv.1to7 <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.1to7),], na.rm = TRUE)
+
+pred.7to21 <- pred.data[pred.data$BM_all_carnivoran > 0.845098 & pred.data$BM_all_carnivoran <= log10(21),]
+predDiv.7to21 <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.7to21),], na.rm = TRUE)
+
+pred.21up <- pred.data[pred.data$BM_all_carnivoran > log10(21),]
+predDiv.21up <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.21up),], na.rm = TRUE)
+
+pred.21to100 <- pred.data[pred.data$BM_all_carnivoran >= log10(21) & pred.data$BM_all_carnivoran < log10(100),]
+predDiv.21to100 <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.21to100),], na.rm = TRUE)
+
+pred.100up <- pred.data[pred.data$BM_all_carnivoran > log10(100),]
+predDiv.100up <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.100up),], na.rm = TRUE)
+
+pred.200up <- pred.data[pred.data$BM_all_carnivoran > log10(200),]
+predDiv.200up <- colSums(test.pred[rownames(test.pred) %in% rownames(pred.200up),], na.rm = TRUE)
+
+pred.preyDivCompare <- rbind(All_Predators = carniv.Diversity, 
+                             "<1kg" = predDiv.1low,
+                             "1kg to 7kg" = predDiv.1to7,
+                             "7kg to 21kg" = predDiv.7to21,
+                             "21kg to 100kg" = predDiv.21up,
+                             ">21kg"  = predDiv.21up,
+                             ">100kg" = predDiv.100up,
+                             ">200kg" = predDiv.200up)
+```
+
+```{r, include=FALSE}
+#measure.mat <- getMeasureMatWithBodyMasses()
+#measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$family %in% focal.family], ]
+
+#archaic.ung <- read.csv("/Users/emdoughty/Dropbox/Code/ArchaicUngulate_UploadFile_2021_4_29.csv")
+
+#archaic.Mat.tot <- getMeasureMatCondylarths(data.raw = archaic.ung, occs = occs, 
+ #                                           col.order = colnames(measure.mat), 
+#                                            all.bm = FALSE,
+#                                           regression = "ArchaicNonselenodonts")
+
+#measure.mat <- rbind(measure.mat, archaic.Mat.tot)
+
+countCube <- sapply(rep.species$RepsTaxa, function(this.rep) {
+  sapply(this.rep, function(this.intv, this.rep) {
+    hist(measure.mat[,"bodyMass"][match(this.intv, measure.mat$taxon)], 
+         breaks=c(-Inf, 0.69897, 1.39794, 2.176091, 2.69897, Inf), plot=FALSE)$counts
+  }, this.rep=this.rep)
+}, simplify = "array")
+
+countCube <- countCube[,,1]
+
+#countCube <- rbind(countCube, t(colSums(countCube)))
+
+rownames(countCube) <- c("rabbit (<5 kg)","beaver (5-25 kg)",
+                         "antelope (25-150kg)", "horse (150-500 kg)", 
+                         "rhino (500-1000 kg)") #,"megaherbivore (>1000 kg)","AllUngulates")
+
+#countCube <- countCube[c(7,1:6),]
+
+```
+
+```{r}
+require("corrplot")
+xval <- t(as.matrix(countCube))
+
+yval <- t(as.matrix(pred.preyDivCompare))
+#yval <- cbind(yval, 0)
+
+all.val <- cbind(xval, yval)
+
+#corr.results <- cor(xval, yval)
+
+corr.results <- cor(all.val)
+
+cor.p <- cor.mtest(all.val)$p
+
+#cor.p <- cor.mtest(cbind(xval, yval), method = "pearson")
+
+corrplot::corrplot(corr.results, type = "upper", p.mat = cor.p, insig = "blank")
+
+```
+
+```{r}
+
+#ungulates <- cbind(xval, yval[,5]); colnames(ungulates) <- c(colnames(xval),"UngulateDiv")
+#predators <- yval[,-5]
+
+ungulates <- t(as.matrix(countCube))
+predators <- t(as.matrix(pred.preyDivCompare))
+
+corr.results.both <- cor(ungulates, predators)
+
+cor.p.culled <- cor.p[rownames(cor.p) %in% colnames(ungulates),]
+cor.p.culled <- cor.p.culled[,colnames(cor.p) %in% colnames(predators)]
+
+corrplot::corrplot(corr.results.both, p.mat = cor.p.culled, insig = "blank", mar = c(1,1,1,1),
+                   cl.align.text = 'l', addCoef.col = 'black')
+
+mtext("Large Herbivore", side = 2, line = -3, cex = 1.5)
+mtext("Predator", side = 3, adj = 0.6, line = 0, cex = 1.5)
+
+```
+
+# Correlation using first differences
+```{r}
+#UngualteBMGroupDiv_FirstDiff
+
+#pred.prey.DivFirstDiff
+
+#should make list of plots of each catagpry through time to make sure data is stationary
+
+ungulates <- t(as.matrix(UngualteBMGroupDiv_FirstDiff))
+predators <- t(as.matrix(pred.prey.DivFirstDiff))
+
+corr.results.both <- cor(ungulates, predators)
+
+cor.p.culled <- cor.p[rownames(cor.p) %in% colnames(ungulates),]
+cor.p.culled <- cor.p.culled[,colnames(cor.p) %in% colnames(predators)]
+
+corrplot::corrplot(corr.results.both, p.mat = cor.p.culled, mar = c(1,1,1,1), #insig = "blank",
+                   cl.align.text = 'l', addCoef.col = 'black')
+
+mtext("Large Herbivore", side = 2, line = -3, cex = 1.5)
+mtext("Predator", side = 3, adj = 0.6, line = 0, cex = 1.5)
+
+```
+
+
+# Relative Abundance
+```{r}
+int_length <- 2
+intervals <- makeIntervals(1, 64, int_length)
+# intervals <- getIntervals_Alroy2000()
+
+intList <- listifyMatrixByRow(intervals)
+
+do.parallel <- FALSE
+if (do.parallel) require(parallel)
+n.reps <- 1000
+do.subsample <- TRUE
+subsample.by <- "collection"
+# quota <- 0.4
+do.disparity <- FALSE
+bootstrapSpecimens <- FALSE
+bootstrapSpecies <- FALSE
+bootstrapSpeciesWithinIntervals <- FALSE
+plotHist <- FALSE
+do.heuristic <- FALSE
+extra.intvs <- 0
+do.rangethrough <- TRUE
+
+if (bootstrapSpecies) holderMat <- measure.mat
+
+if (plotHist) {
+  quartz("Guild Histograms")
+  par(mfrow=c((nrow(intervals)), 3), mar=c(0,0,0.75,0), cex.axis=0.5, cex.main=0.75)
+}
+
+repIntOccs <- list()
+
+################################################################################################################################################
+#### get species within intervals
+################################################################################################################################################
+
+for (rep in seq_len(n.reps)) {
+  cat("Beginning Rep", rep, "of", n.reps, "...\r")
+  ##################################################We need to update this sbootstrap section
+  if (bootstrapSpecimens) {
+    measure.mat <- specimenMat[sample.int(nrow(specimenMat), size=nrow(specimenMat), replace=TRUE),]
+    measure.mat <- aggregate(measure.mat, by=list(taxon=specimenMat$taxon), mean, na.rm=TRUE)
+    # measure.mat <- measure.mat[,apply(!sapply(measure.mat, is.na), 2, any)]
+    rownames(measure.mat) <- measure.mat$taxon
+    measure.mat[sapply(measure.mat, is.nan)] <- NA
+    # measure.mat<-cbind(measure.mat, cbind(FO=vector(length=nrow(measure.mat), mode="numeric"), LO=vector(length=nrow(measure.mat), mode="numeric")))
+    measure.mat[,"reg"] <- as.character(famList$reg[match(measure.mat$taxon,famList$taxon)])
+    measure.mat[,"bodyMass"] <- makeBodyMasses(measure.mat, regList, best.only=TRUE)
+    # measure.mat[,"PC2"] <- pcVec[match(measure.mat$taxon, names(pcVec))]
+    # measure.mat[,"PC3"] <- pcaLo$x[match(measure.mat$taxon, rownames(pcaLo$x)),3]
+  }
+  if (bootstrapSpecies) measure.mat <- holderMat[sample.int(n=nrow(measure.mat), size=nrow(measure.mat), replace=TRUE),]
+  
+  col.dates <- getCollectionAgesFromOccs(occs=occs[, c("collection_no", "max_ma", "min_ma")], random=TRUE)
+  occDates <- col.dates$collection_age[match(occs$collection_no, col.dates$collection_no)]
+  intOccs <- apply(intervals, 1, function(thisIntv) occs$occurrence_no[occDates > thisIntv[1] & occDates <= thisIntv[2]]) # greater than ageTop, less than or equal to ageBase
+  # intTaxa <- sapply(intOccs, function(x) unique(occs$accepted_name[occs$occurrence_no %in% x]))
+  # x <- intOccs
+  # intSp <- sapply(intOccs, function(x) match(sort(unique(gsub(pattern = "[[:space:]]", replacement = "_", x = occs$accepted_name[occs$accepted_rank  == "species" & occs$occurrence_no %in% x]))), measure.mat$taxon))
+  # intSp <- sapply(intOccs, function(x) match(sort(unique(occs$accepted_name[occs$accepted_rank  %in% c("genus", "species") & occs$occurrence_no %in% x]))), measure.mat$taxon))
+  # intSp <- sapply(intOccs, function(x) sort(unique(as.character(occs$accepted_name[occs$occurrence_no %in% x]))))
+  
+  #which(occs$occurrence_no %in% x == TRUE) # none are being returned as TRUE
+  
+  if (do.subsample) { 
+    if (subsample.by == "occurrence") {
+      nOccs <- sapply(intOccs, length)
+      # nTaxa <- sapply(intSp, length)			### if you want to set the quota no lower than the maximum number of SIB taxa; intSp is required for this to work, so has to be done above
+      nTaxa <- 0									### set to zero to simply set the quota to the minimum number of occurrences
+      quota <- max(c(max(nTaxa), min(nOccs)))		### quota is either the maximum number of observed taxa, or the minimum number of occurrences
+      cat("Subsampling quota set to", quota, "occurrences")
+      
+      intOccs <- lapply(X=intOccs, FUN=sample, size=quota)
+    } else if (subsample.by == "collection") {
+      intCols <- lapply(intOccs, function(this.intv) unique(occs$collection_no[occs$occurrence_no %in% this.intv]))
+      quota <- min(sapply(intCols, length))
+      
+      intCols <- lapply(X=intCols, FUN=sample, size=quota)
+      intOccs <- lapply(intCols, function(this.intv) occs$occurrence_no[occs$collection_no %in% this.intv])
+    }	
+  }
+  repIntOccs[[rep]] <- intOccs 
+}
+
+# repIntTaxa <- getRepIntTaxaFromRepIntOccs(repIntOccs, this.rank=this.rank, do.rangethrough=do.rangethrough)
+
+# all.taxa <- sort(unique(unlist(repIntTaxa)))
+# all.taxa <- all.taxa[all.taxa %in% as.character(bigList$accepted_name)]
+
+# taxRangeCube <- sapply(repIntTaxa, getIntRangesOneRep, all.taxa, simplify="array")
+# taxRangeBox <- array(data=FALSE, dim=c(nrow(taxRangeCube), nrow(intervals), n.reps), dimnames=list(rownames(taxRangeCube), rownames(intervals)))
+# for(this.rep in seq_len(n.reps)) {
+# for (this.taxon in seq_len(nrow(taxRangeCube))) {
+# if (all(is.finite(taxRangeCube[this.taxon,1,this.rep]) & is.finite(taxRangeCube[this.taxon,2,this.rep]))) taxRangeBox[this.taxon, taxRangeCube[this.taxon,1,this.rep]:taxRangeCube[this.taxon,2,this.rep], this.rep] <- TRUE
+# }
+# }
+
+print("Completed getting taxa with intervals")
+
+################################################################################################################################################
+
+# sapply(repIntOccs, function(x) sapply(x, length))
+
+#########
+#set Condylarthra to have that as order designation
+##could use occs to compile occurrences ofr order then append the family level for condylarthra and then reduce it to uniques.  That should work.....
+occs.backup <- occs
+
+#occs[occs$order %in% focal.order | occs$family %in% condylarth.families, ]
+condylarth.families <- c("Arctocyonidae", "Chriacidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.order <- c("Artiodactyla", "Perissodactyla")
+#########
+
+splat <- function (this.rep) {
+ # occ.box <- cbind(n_occs_ung=sapply(this.rep, function(this.intv) sum(occs[occs$occurrence_no %in% this.intv,]$order %in% focal.order)), 
+  occ.box <- cbind(n_occs_ung=sapply(this.rep, function(this.intv) sum(occs[occs$occurrence_no %in% this.intv,]$order %in% focal.order | occs[occs$occurrence_no %in% this.intv,]$family %in% condylarth.families)), 
+                   n_occs_carn=sapply(this.rep, function(this.intv) sum(occs[occs$occurrence_no %in% this.intv,]$order %in% c("Carnivora", "Creodonta"))), 
+                   n_occs_rod=sapply(this.rep, function(this.intv) sum(occs[occs$occurrence_no %in% this.intv,]$order %in% c("Rodentia", "Lagomorpha"))), 
+                   n_occs_other=sapply(this.rep, function(this.intv) sum(!occs[occs$occurrence_no %in% this.intv,]$order %in% c("Carnivora", "Creodonta","Rodentia", "Lagomorpha", focal.order) | !occs[occs$occurrence_no %in% this.intv,]$family %in% condylarth.families)), 
+                   n_occs=sapply(this.rep, length),
+                   n_cols_ung=sapply(this.rep, function(this.intv) length(sort(unique(occs$collection_no[occs$occurrence_no %in% this.intv & occs$order %in% focal.order])))),
+                   n_cols_carn=sapply(this.rep, function(this.intv) length(sort(unique(occs$collection_no[occs$occurrence_no %in% this.intv & occs$order %in% c("Carnivora", "Creodonta")])))),
+                   n_cols_rod=sapply(this.rep, function(this.intv) length(sort(unique(occs$collection_no[occs$occurrence_no %in% this.intv & occs$order %in% c("Rodentia", "Lagomorpha")])))),
+                   n_cols_other=sapply(this.rep, function(this.intv) length(sort(unique(!occs$collection_no[occs$occurrence_no %in% this.intv & occs$order %in% c("Carnivora", "Creodonta","Rodentia", "Lagomorpha", focal.order) | !occs$occurrence_no %in% this.intv & occs$family %in% condylarth.families])))), 
+                   n_cols=sapply(this.rep, function(this.intv) length(sort(unique(occs$collection_no[occs$occurrence_no %in% this.intv])))))
+  occ.box <- cbind(occ.box, prop_occ_ung=round(occ.box[,"n_occs_ung"]/occ.box[,"n_occs"], digits=3), prop_occ_carn=round(occ.box[,"n_occs_carn"]/occ.box[,"n_occs"], digits=3), prop_occ_rod=round(occ.box[,"n_occs_rod"]/occ.box[,"n_occs"], digits=3), prop_occ_other=round(occ.box[,"n_occs_other"]/occ.box[,"n_occs"], digits=3))
+  occ.box <- cbind(occ.box, prop_col_ung=round(occ.box[,"n_cols_ung"]/occ.box[,"n_cols"], digits=3), prop_col_carn=round(occ.box[,"n_cols_carn"]/occ.box[,"n_cols"], digits=3), prop_col_rod=round(occ.box[,"n_cols_rod"]/occ.box[,"n_cols"], digits=3), prop_col_other=round(occ.box[,"n_cols_other"]/occ.box[,"n_cols"], digits=3))
+}
+occ.box <- apply(sapply(repIntOccs, splat, simplify="array"), c(1,2), quantile, probs=c(0.025, 0.50, 0.975))
+
+# occ.box <- data.frame(occ.box, prop_ung=round(occ.box[,"n_occs_ung"]/occ.box[,"n_occs"], digits=3), prop_carn=round(occ.box[,"n_occs_carn"]/occ.box[,"n_occs"], digits=3))
+
+#quartz(height = 5.5, width = 8.5)
+par(mfrow=c(2,1), mar=c(4,4,1.6,4), mgp=c(2, 1,0)) #, height = 2.15, width = 8.21)
+
+plot(apply(intervals, 1, mean), 
+     occ.box[2,,"n_occs_ung"], 
+     xlim=c(65, 0), ylim=c(0,750), 
+     xaxp = c(70,0,14), yaxp = c(0, 750, 15),
+     type="n", 
+     xlab="Time (Ma", ylab="Number of occurrences with taxon")
+overlayCzTimescale(do.subepochs=TRUE)
+polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"n_occs_ung"], rev(occ.box[3,,"n_occs_ung"])), col=adjustcolor("dodgerblue1", alpha=0.2))
+polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"n_occs_carn"], rev(occ.box[3,,"n_occs_carn"])), col=adjustcolor("firebrick1", alpha=0.2))
+#polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"n_occs_rod"], rev(occ.box[3,,"n_occs_rod"])), col=adjustcolor("darkolivegreen1", alpha=0.2))
+polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"n_occs"], rev(occ.box[3,,"n_occs"])), col=adjustcolor("grey25", alpha=0.2))
+#points(apply(intervals, 1, mean), occ.box[2,,"n_occs_rod"], pch=24, col="darkolivegreen4", type="o", bg="darkolivegreen1")
+points(apply(intervals, 1, mean), occ.box[2,,"n_occs_carn"], pch=22, col="firebrick4", type="o", bg="firebrick1")
+points(apply(intervals, 1, mean), occ.box[2,,"n_occs_ung"], pch=21, type="o", col="dodgerblue4", bg="dodgerblue1")
+points(apply(intervals, 1, mean), occ.box[2,,"n_occs"], pch=21, type="o", col="black", bg="grey25")
+
+plot(apply(intervals, 1, mean), 
+     occ.box[2,,"prop_occ_ung"], 
+     xlim=c(65, 0), ylim=c(0, 0.75), 
+     xaxp = c(70,0,14), yaxp = c(0, 1, 10),
+     type="n", 
+     xlab="Time (Ma", ylab="Proportion of occurrences within guild")
+overlayCzTimescale(do.subepochs=TRUE)
+polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"prop_occ_ung"], rev(occ.box[3,,"prop_occ_ung"])), col=adjustcolor("dodgerblue1", alpha=0.2), border="dodgerblue1")
+polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"prop_occ_carn"], rev(occ.box[3,,"prop_occ_carn"])), col=adjustcolor("firebrick1", alpha=0.2), border="firebrick1")
+polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"prop_occ_other"], rev(occ.box[3,,"prop_occ_other"])), col=adjustcolor("darkgoldenrod1", alpha=0.2), border="darkgoldenrod4")
+#polygon(x=c(apply(intervals, 1, mean), rev(apply(intervals, 1, mean))), c(occ.box[1,,"prop_occ_rod"], rev(occ.box[3,,"prop_occ_rod"])), col=adjustcolor("darkolivegreen1", alpha=0.2), border="darkolivegreen1")
+#points(apply(intervals, 1, mean), occ.box[2,,"prop_occ_rod"], pch=24, col="darkolivegreen4", type="o", bg="darkolivegreen1")
+points(apply(intervals, 1, mean), occ.box[2,,"prop_occ_carn"], pch=22, col="firebrick4", type="o", bg="firebrick1")
+points(apply(intervals, 1, mean), occ.box[2,,"prop_occ_ung"], pch=21, type="o", col="dodgerblue4", bg="dodgerblue1")
+points(apply(intervals, 1, mean), occ.box[2,,"prop_occ_other"], pch=21, type="o", col="darkgoldenrod4", bg="darkgoldenrod1")
+
+```
+
+```{r}
+this.rank = "species"
+
+getRepIntTaxa_Abundance <- function(repIntOccs, this.rank="species", do.rangethrough=TRUE) {
+	lapply(repIntOccs, getIntTaxaAbundanceFromOneRepIntOccs, this.rank=this.rank, do.rangethrough= do.rangethrough)
+}
+  
+getIntTaxaAbundanceFromOneRepIntOccs <- function(this.repIntOccs, this.rank="species", do.rangethrough=TRUE) {
+	if (this.rank=="species") {
+		intTaxa <- lapply(this.repIntOccs, function(x) sort(as.character(occs$accepted_name[occs$occurrence_no %in% x & occs$accepted_rank=="species"])))
+	} else if (this.rank=="genus") {
+		intTaxa <- lapply(this.repIntOccs, function(x) sort(as.character(occs$genus[occs$occurrence_no %in% x & occs$accepted_rank %in% c("genus", "species")])))
+	}
+
+	if (do.rangethrough) intTaxa <- makeRangeThroughOneRep(intTaxa)
+	intTaxa
+}  
+
+repIntTaxa <- getRepIntTaxa_Abundance(repIntOccs, this.rank=this.rank, do.rangethrough=do.rangethrough)
+
+```
+
+```{r}
+run.taxon <-  "ungulates"
+
+herbivore.size.cat <- c(-Inf, 0.69897, 1.39794, 2.176091, 2.69897, Inf) #Janis 2000  max(measure.mat$bodyMass, na.rm=TRUE)
+
+if(run.taxon == "ungulates") bmBreaks <- herbivore.size.cat
+if(run.taxon == "carnivores") bmBreaks <- predator.size.cat
+
+countCube <- sapply(repIntTaxa, function(this.rep) {
+	sapply(this.rep, function(this.intv, this.rep) {
+		hist(measure.mat$bodyMass[match(this.intv, measure.mat$taxon)], breaks=bmBreaks, plot=FALSE)$counts
+		}, this.rep=this.rep)
+	}, simplify = "array")
+	
+#countBox <- apply(countCube, c(1,2), quantile, probs=c(0.025, 0.5, 0.975), na.rm=TRUE) 
+
+sizecateg <- c("rabbit (<5 kg)", "water deer (5-25 kg)",#"dog (5-25 kg)", could also do beaver for 5-25kg
+                         "antelope (25-150kg)", "horse (150-500 kg)", 
+                         "rhino (500-1000 kg)")
+
+dimnames(countCube) <- list(sizecateg, rownames(intervals), NULL)
+
+
+#countCube <- countCube[,,1]
+#prop <- t(countCube)
+prop <- t(apply(countCube, c(1,2), mean, na.rm=TRUE))
+colnames(prop)[colnames(prop)==""] <- "indeterminate"
+
+par(mfrow=c(2,1), mar=c(4,4,1.6,4), mgp=c(2, 1,0)) #, height = 2.15, width = 8.21)
+plotStackedRichness(this.box=prop, intervals=intervals, reorder.taxa = FALSE, do.log=FALSE, overlay.labels=FALSE, numbers.only=FALSE, legend=FALSE, xlim = c(65, min(intervals, na.rm=TRUE)))
+
+```
+
+```{r}
+run.taxon <-  "carnivores"
+
+pred.size.cat <- c(-Inf,0,0.845098,1.322219,2,Inf) 
+
+if(run.taxon == "carnivores") bmBreaks <- pred.size.cat
+
+countCube <- sapply(repIntTaxa, function(this.rep) {
+	sapply(this.rep, function(this.intv, this.rep) {
+		hist(pred.data$bodyMass[match(this.intv, pred.data$taxon)], breaks=bmBreaks, plot=FALSE)$counts
+		}, this.rep=this.rep)
+	}, simplify = "array")
+	
+#countBox <- apply(countCube, c(1,2), quantile, probs=c(0.025, 0.5, 0.975), na.rm=TRUE) 
+
+sizecateg <- c("<1kg",
+               "1kg to 7kg",
+               "7kg to 21kg",
+               "21kg to 100kg",
+               ">100kg")
+
+dimnames(countCube) <- list(sizecateg, rownames(intervals), NULL)
+
+
+#countCube <- countCube[,,1]
+#prop <- t(countCube)
+prop <- t(apply(countCube, c(1,2), mean, na.rm=TRUE))
+colnames(prop)[colnames(prop)==""] <- "indeterminate"
+
+#par(mfrow=c(2,1), mar=c(4,4,1.6,4), mgp=c(2, 1,0)) #, height = 2.15, width = 8.21)
+plotStackedRichness(this.box=prop, intervals=intervals, reorder.taxa = FALSE, do.log=FALSE, overlay.labels=FALSE, numbers.only=FALSE, legend=FALSE, xlim = c(65, min(intervals, na.rm=TRUE)))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,415 @@
+---
+title: "PPP Unsupervised Categorization"
+author: "Evan Doughty"
+date: "4/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Data is the Macroecological Database of Mammalian Body Mass (MOM_4.1)
+### Smith etal 2003
+
+# Large Herbivore Guild
+
+```{r}
+mom.data <- read.csv("/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/MOM_v4.1.csv")
+#mom.data <- read.csv("/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/MOM_v4.1_herb.csv")
+
+
+mom.data <- mom.data[,c("Continent", "Species.Distribution", "Status", 
+                        "Order", "FAMILY", "Genus", "Species", 
+                        "Combined.Mass..g.","LogMass..g.", "Combined.Mass..kg.", "LogMass..kg."),]
+
+mom.data <- mom.data[mom.data$Order %in% c("Artiodactyla", "Perissodactyla"),]
+
+### set groups using Janis 2000 breaks
+bmBreaks_herb <- c(-Inf, 0.69897, 1.39794, 2.176091, 2.69897, Inf) #Janis 2000  max(measure.mat$bodyMass, na.rm=TRUE)
+sizecateg <- c("<5 kg", 
+               "5-25 kg",
+               "25-150kg", 
+               "150-500 kg", 
+               ">500 kg")
+mom.data$Janis.cat <- NA
+require(cluster)
+
+for(ii in seq(1, length(sizecateg),1)) 
+{
+  mom.data[mom.data$LogMass..kg. > bmBreaks_herb[ii] & mom.data$LogMass..kg. < bmBreaks_herb[ii+1],]$Janis.cat <- sizecateg[ii]
+}
+
+colors.Janis <- rainbow(length(sizecateg)); names(colors.Janis) <- sizecateg
+```
+
+## k-means
+
+```{r}
+kmeans_results <- list()
+kmeans_breaks <- list()
+
+wss <- vector(length = 9)
+sil <- vector(length = 9)
+
+for(ii in seq(2,10,1))
+{
+  kmeans_results[[ii]] <- kmeans(mom.data$LogMass..kg., centers = ii, iter.max = 10000, nstart = 50)
+  wss[ii-1] <- kmeans_results[[ii]]$tot.withinss
+  sil[ii-1] <- mean(silhouette(kmeans_results[[ii]]$cluster, dist(mom.data$LogMass..kg.))[,3])
+  
+  kmean_Onebreaks <- matrix(ncol = 3, nrow = ii)
+  colnames(kmean_Onebreaks) <- c("k", "min.kg", "max.kg")
+  
+  for(jj in seq(1, max(unique(kmeans_results[[ii]]$cluster)),1)) 
+  {
+    min.categ <- min(mom.data[kmeans_results[[ii]]$cluster == jj,"LogMass..kg."])
+    max.categ <- max(mom.data[kmeans_results[[ii]]$cluster == jj,"LogMass..kg."])
+    
+    kmean_Onebreaks[jj,] <- c(jj, min.categ, max.categ)
+  }
+  kmeans_breaks[[ii]] <- kmean_Onebreaks[order(kmean_Onebreaks[,2],kmean_Onebreaks[,3]),]
+}
+```
+
+```{r}
+#good resource and code to follow
+##https://uc-r.github.io/kmeans_clustering
+
+if(interval.type == "bins")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Kmeans herbivores Unsup Curve and Silhoette 2 Ma Intervals 64 to 0 Ma ", date.save,".png"),
+      width = 6, height = 4, units = "in", res = 200)
+}
+
+if(interval.type == "nalma")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Species Richness Plots for Pred Diet Draft NALMA ", date.save,".png"),
+      width = 15, height = 9, units = "in", res = 200)
+}
+
+#Determine Optimal K value
+par(mfrow=c(1,2), bg=NA)
+##Elbow Method
+plot(2:10, wss, type = "b", pch = 19,
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n')
+    # xlab = "Number of clusters K", ylab = "Total Within Sum of Square")
+abline(v=5)
+axis(1,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(2,10,by = 2)), lwd = 2, tck = -0.05, las = 1, padj = 0.75)
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(0,25,by = 5)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+##Silhoettes
+plot(2:10, sil, type = "b", pch = 19,
+     #xlab = "Number of clusters K", ylab = "Average Silhoettes")
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n')
+abline(v=5)
+axis(1,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(2,10,by = 2)), lwd = 2, tck = -0.05, las = 1, padj = 0.75)
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(0.40,0.6,by = 0.01)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+dev.off()
+```
+
+```{r}
+#Plot PPP pred Categories vs Optimal K Means
+if(interval.type == "bins")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Kmeans herbivores 5_6 Unsup size cat 2 Ma Intervals 64 to 0 Ma ", date.save,".png"),
+      width = 6, height = 4, units = "in", res = 200)
+}
+
+if(interval.type == "nalma")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Species Richness Plots for Pred Diet Draft NALMA ", date.save,".png"),
+      width = 15, height = 9, units = "in", res = 200)
+}
+
+par(mfrow=c(1,3), bg=NA)
+plot(mom.data$LogMass..kg., pch = 19, col = colors.Janis[mom.data$Janis.cat], #main = "Janis 2000",
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+abline(h = bmBreaks_herb)
+text(75, bmBreaks_herb, labels = bmBreaks_herb, pos = 3, adj = 1)
+#axis(1,col.ticks="white", col.axis = "white", cex.axis =1, labels = FALSE, at = c(seq(2,10,by = 2)), lwd = 2, tck = -0.05, las = 1, padj = 0.75)
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(0,4,by = 0.5)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+k<-5
+plot(mom.data$LogMass..kg., pch = 19, col = rainbow(k)[kmeans_results[[k]]$cluster], #main = paste0("K = ",k),
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+#abline(h= kmeans_results[[5]]$centers)
+#abline(h=jenkBreaks[2:(length(jenkBreaks)-1)])
+#text(jenkBreaks[2:(length(jenkBreaks)-1)], labels =jenkBreaks[2:(length(jenkBreaks)-1)], pos = 3)
+for(yy in seq(2, nrow(kmeans_breaks[[k]]),1)) 
+  {
+    abline(h=c((kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2))
+    text( x = 50, y = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2, 
+         labels = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2,
+         pos = 3, adj = 1)
+}
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = FALSE, at = c(seq(0,4,by = 0.5)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+k<-6
+plot(mom.data$LogMass..kg., pch = 19, col = rainbow(k)[kmeans_results[[k]]$cluster],# main = paste0("K = ",k),
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+#abline(h= kmeans_results[[5]]$centers)
+for(yy in seq(2, nrow(kmeans_breaks[[k]]),1)) 
+  {
+    abline(h=c((kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2))
+    text( x = 50, y = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2, 
+         labels = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2,
+         pos = 3, adj = 1)
+}
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = FALSE, at = c(seq(0,4,by = 0.5)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+dev.off()
+```
+#### Note for plots above.  Horizontal lines for K-means plots are the average between the min and max of the upper and lower intervals, respectively.   Jenks breaks are the same so those would be more reliable.
+
+
+## Natural Breaks (Jenks Optimization)
+
+```{r}
+require(BAMMtools)
+
+vec <- mom.data$LogMass..kg.
+#get the withinss to find optimal breaks and compare with kmeans
+cal_wss <- function(values, group){
+                    if(is.numeric(group)){
+                      group = factor(group)
+                    }
+                    sum((aov(values~group)$residuals^2))
+                  }
+
+j_withinss = sapply(2:10, function(i){
+                    Jenk = getJenksBreaks(vec, i+1)
+                    clus = cut(vec, breaks=Jenk, include.lowest=TRUE)
+                    cal_wss(vec,clus)
+                  })
+
+par(mfrow = c(1,2))
+plot(2:10, wss, type = "b", pch = 19,
+     xlab = "Number of clusters K", ylab = "Total Within Sum of Square", main = "k-means")
+abline(v=5)
+plot(2:10, j_withinss, xlab = "k", ylab = "Total Within Sum of Square", main = "Jenk")
+abline(v=5)
+```
+
+#### Plot the optimal Jenk
+```{r}
+require(GmAMisc)
+```
+
+```{r}
+par(mfrow = c(1,2))
+plotJenks(mom.data$LogMass..kg., n = 5, brks.cex = 1, dist = 4, top.margin = 20)
+plotJenks(mom.data$LogMass..kg., n = 6, brks.cex = 1, dist = 4, top.margin = 20)
+```
+
+##############################################################################################################################
+
+# Predator Guild
+
+```{r}
+#removed taxa that were under scrutiny and those with a weight of -999
+mom.data <- read.csv("/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/MOM_v4.1_pred.csv")
+mom.data <- mom.data[!mom.data$FAMILY %in% c("Otariidae","Odobenidae","Phocidae"),]
+
+mom.data <- mom.data[,colnames(mom.data) %in% c("Status", 
+                        "Order", "FAMILY", "Genus", "Species", 
+                        "Combined.Mass..g.","LogMass..g.", "Combined.Mass..kg.", "LogMass..kg.")]
+
+mom.data <- mom.data[mom.data$Order %in% c("Carnivora"),]
+
+### set groups using PPP prey breaks
+bmBreaks_pred <- c(-Inf, 0, 0.845098, 1.322219, 2, Inf)  #Janis 2000  max(measure.mat$bodyMass, na.rm=TRUE)
+sizecateg <- c("<1kg",
+               "1-7kg",
+               "7-21kg", 
+               "21-100kg",
+               ">100kg")
+mom.data$Pred.cat <- NA
+
+for(ii in seq(1, length(sizecateg),1)) 
+{
+  mom.data[mom.data$LogMass..kg. > bmBreaks_pred[ii] & mom.data$LogMass..kg. < bmBreaks_pred[ii+1],]$Pred.cat <- sizecateg[ii]
+}
+
+colors.pred <- rainbow(length(sizecateg)); names(colors.pred) <- sizecateg
+
+kmeans_results <- list()
+kmeans_breaks <- list()
+
+wss <- vector(length = 9)
+sil <- vector(length = 9)
+
+for(ii in seq(2,10,1))
+{
+  kmeans_results[[ii]] <- kmeans(mom.data$LogMass..kg., centers = ii, iter.max = 10000, nstart = 50)
+  wss[ii-1] <- kmeans_results[[ii]]$tot.withinss
+  sil[ii-1] <- mean(silhouette(kmeans_results[[ii]]$cluster, dist(mom.data$LogMass..kg.))[,3])
+  
+  kmean_Onebreaks <- matrix(ncol = 3, nrow = ii)
+  colnames(kmean_Onebreaks) <- c("k", "min.kg", "max.kg")
+  
+  for(jj in seq(1, max(unique(kmeans_results[[ii]]$cluster)),1)) 
+  {
+    min.categ <- min(mom.data[kmeans_results[[ii]]$cluster == jj,"LogMass..kg."])
+    max.categ <- max(mom.data[kmeans_results[[ii]]$cluster == jj,"LogMass..kg."])
+    
+    kmean_Onebreaks[jj,] <- c(jj, min.categ, max.categ)
+  }
+  kmeans_breaks[[ii]] <- kmean_Onebreaks[order(kmean_Onebreaks[,2],kmean_Onebreaks[,3]),]
+}
+```
+
+```{r}
+#good resource and code to follow
+##https://uc-r.github.io/kmeans_clustering
+
+if(interval.type == "bins")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Kmeans predators Unsup Curve and Silhoette 2 Ma Intervals 64 to 0 Ma ", date.save,".png"),
+      width = 6, height = 4, units = "in", res = 200)
+}
+
+if(interval.type == "nalma")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Species Richness Plots for Pred Diet Draft NALMA ", date.save,".png"),
+      width = 15, height = 9, units = "in", res = 200)
+}
+
+#Determine Optimal K value
+par(mfrow=c(1,2), bg=NA)
+##Elbow Method
+plot(2:10, wss, type = "b", pch = 19,
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n')# xlab = "Number of clusters K", ylab = "Total Within Sum of Square")
+abline(v=6)
+axis(1,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(2,10,by = 2)), lwd = 2, tck = -0.05, las = 1, padj = 0.75)
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(0,80,by = 10)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+##Silhoettes
+plot(2:10, sil, type = "b", pch = 19,
+     xlab = "", ylab = "", xaxt= 'n', yaxt = 'n') # xlab = "Number of clusters K", ylab = "Average Silhoettes")
+abline(v=6)
+axis(1,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(2,10,by = 2)), lwd = 2, tck = -0.05, las = 1, padj = 0.75)
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(0,0.585,by = 0.005)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+dev.off()
+```
+
+```{r}
+if(interval.type == "bins")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Kmeans predators 2_5_6 Unsup size cat 2 Ma Intervals 64 to 0 Ma ", date.save,".png"),
+      width = 8, height = 4, units = "in", res = 200)
+}
+
+if(interval.type == "nalma")
+{
+  png(paste0("/Users/emdoughty/Dropbox/Proposal/Chapter 1 Figures/Species Richness Plots for Pred Diet Draft NALMA ", date.save,".png"),
+      width = 15, height = 9, units = "in", res = 200)
+}
+
+#Plot PPP pred Categories vs Optimal K Means
+par(mfrow=c(1,4), bg=NA)
+plot(mom.data$LogMass..kg., pch = 19, col = colors.pred[mom.data$Pred.cat], #main = "PPP Categories")
+       xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+abline(h = bmBreaks_pred)
+text(75, bmBreaks_pred, labels = bmBreaks_pred, pos = 3, adj = 1)
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = TRUE, at = c(seq(-2,4,by = 1)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+k<-2
+plot(mom.data$LogMass..kg., pch = 19, col = rainbow(k)[kmeans_results[[k]]$cluster],# main = paste0("K_",k))
+       xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+#abline(h= kmeans_results[[5]]$centers)
+for(yy in seq(2, nrow(kmeans_breaks[[k]]),1)) 
+  {
+    abline(h=c((kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2))
+    text( x = 50, y = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2, 
+         labels = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2,
+         pos = 3, adj = 1)
+}
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = FALSE, at = c(seq(-2,4,by = 1)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+k<-5
+plot(mom.data$LogMass..kg., pch = 19, col = rainbow(k)[kmeans_results[[k]]$cluster], #main = paste0("K_",k))
+       xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+#abline(h= kmeans_results[[5]]$centers)
+for(yy in seq(2, nrow(kmeans_breaks[[k]]),1)) 
+  {
+    abline(h=c((kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2))
+    text( x = 50, y = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2, 
+         labels = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2,
+         pos = 3, adj = 1)
+}
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = FALSE, at = c(seq(-2,4,by = 1)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+
+k<-6
+plot(mom.data$LogMass..kg., pch = 19, col = rainbow(k)[kmeans_results[[k]]$cluster],# main = paste0("K_",k))
+       xlab = "", ylab = "", xaxt= 'n', yaxt = 'n', col.lab = "white")
+#abline(h= kmeans_results[[5]]$centers)
+for(yy in seq(2, nrow(kmeans_breaks[[k]]),1)) 
+  {
+    abline(h=c((kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2))
+    text( x = 50, y = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2, 
+         labels = (kmeans_breaks[[k]][yy-1,3]+kmeans_breaks[[k]][yy,2])/2,
+         pos = 3, adj = 1)
+
+}
+axis(2,col.ticks="white", col.axis = "white", cex.axis =1, labels = FALSE, at = c(seq(-2,4,by = 1)), lwd = 2, tck = -0.05, las = 1,  hadj = 1.5)
+dev.off()
+```
+
+#### Note for plots above.  Horizontal lines for K-means plots are the average between the min and max of the upper and lower intervals, respectively.  Jenks breaks are the same so those would be more reliable.
+
+
+## Natural Breaks (Jenks Optimization)
+
+```{r}
+require(BAMMtools)
+
+vec <- mom.data$LogMass..kg.
+#get the withinss to find optimal breaks and compare with kmeans
+cal_wss <- function(values, group){
+                    if(is.numeric(group)){
+                      group = factor(group)
+                    }
+                    sum((aov(values~group)$residuals^2))
+                  }
+
+j_withinss = sapply(2:10, function(i){
+                    Jenk = getJenksBreaks(vec, i+1)
+                    clus = cut(vec, breaks=Jenk, include.lowest=TRUE)
+                    cal_wss(vec,clus)
+                  })
+
+par(mfrow = c(1,2))
+plot(2:10, wss, type = "b", pch = 19,
+     xlab = "Number of clusters K", ylab = "Total Within Sum of Square", main = "k-means")
+abline(v=5)
+plot(2:10, j_withinss, xlab = "k", ylab = "Total Within Sum of Square", main = "Jenk")
+abline(v=5)
+```
+
+#### Plot the optimal Jenk
+```{r}
+par(mfrow = c(1,3))
+plotJenks(mom.data$LogMass..kg., n = 2, brks.cex = 1, dist = 4, top.margin = 25)
+plotJenks(mom.data$LogMass..kg., n = 5, brks.cex = 1, dist = 4, top.margin = 25)
+plotJenks(mom.data$LogMass..kg., n = 6, brks.cex = 1, dist = 4, top.margin = 25)
+```
+
+
+# Predator with Diet
+
+```{r}
+#Gower distance?
+
+
+
+```
+
+# Time series
+```{r}
+#Dynamic time warping = compare seperate time series
+
+#Moving average
+###may be problematic with NALMA dataset due to unequal time intervals
+```

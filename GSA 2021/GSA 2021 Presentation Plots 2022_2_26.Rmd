@@ -1,0 +1,526 @@
+---
+title: "GSA Presentation Figures"
+author: "Evan Doughty"
+date: "9/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+source("~/Dropbox/code/R/common_src/strat.R")
+source("~/Dropbox/code/R/common_src/occFns.R")
+source("~/Dropbox/code/R/common_src/sampling.R") 
+source("~/Dropbox/code/R/common_src/utils_marcot.R")
+source("~/Dropbox/code/R/common_src/CzTimescale.R")
+source("~/Dropbox/Code/R/common_src/taxonomicEv.R")
+
+source('~/Dropbox/code/R/dentalMeasurements/src/src_dentalDataFns.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_bodyMassEstimation.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_ecologyAnalysisFns.R', chdir = TRUE)
+
+
+source('~/Dropbox/Code/Recreate Dental Plots Source 2021_6_2.R')
+
+require(plyr)
+require(abind)
+require(corrplot)
+```
+
+```{r}
+#run.taxon <-  "carnivores" #"ungulates"
+this.rank <- "species" #"genus"
+interval.type <- "nalma" #"bins" 
+
+bmBreaks_herb <- c(-Inf, 0.69897, 1.39794, 2.176091, 2.69897, Inf) #Janis 2000  max(measure.mat$bodyMass, na.rm=TRUE)
+bmBreaks_pred <- c(-Inf, 0, 0.845098, 1.322219, 2, Inf) 
+
+save.pathname <- "~/Dropbox/Code/R/Results/"
+
+#if you want to load a repIntOccs or repIntTaxa from file put the pathname as this object.  otherwise keep as NUll to make a new repIntOccs and repIntTaxa using the settings below
+repIntLoad <- "/Users/emdoughty/Dropbox/Code/R/Results/repIntMaster__this.rank=species_timebin=nalma_SampleStandardized=TRUE_Reps=10000Jonathans_MBP.lan##------ Thu Mar  3 18:05:02 2022 ------##.Rdata"
+  
+#"/Users/emdoughty/Dropbox/Code/R/Results/repIntMaster__this.rank=species_timebin=nalma_SampleStandardized=TRUE_Reps=10000Jonathans_MBP.lan##------ Wed Mar  2 19:04:08 2022 ------##.Rdata"
+#"/Users/emdoughty/Dropbox/Code/R/Results/Taxon_handleyResult_ungulates_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Sep 11 05:29:03 2021 ------##.Rdata" #NULL
+
+
+```
+
+```{r}
+occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=100&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occs <- occs[!occs$order %in% c("Cetacea", "Desmostylia", "Sirenia"), ]
+occs <- occs[!occs$family %in% c("Allodelphinidae", "Balaenidae", "Balaenopteridae", "Delphinidae", "Desmatophocidae", "Desmostylidae", 
+                                 "Didelphidae","Dugongidae","Enaliarctidae", "Eschrichtiidae","Iniidae", "Kentriodontidae", "Kogiidae", 
+                                 "Odobenidae", "Otariidae", "Paleoparadoxiidae", "Panotariidae","Phocidae", "Physeteridae", 
+                                 "Platanistidae", "Pontoporiidae", "Protocetidae", "Squalodontidae", "Ziphiidae"), ]
+occs$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = occs$accepted_name)	#replace spaces with underscores
+
+```
+
+```{r, include=FALSE}
+if(interval.type == "bins")
+{
+  int_length <- 2
+  intervals <- makeIntervals(1, 64, int_length)
+  intList <- listifyMatrixByRow(intervals)
+  
+  save.path.bins <- paste0(int_length,"Ma",interval.type)
+}
+#######################
+
+if(interval.type == "nalma")
+{
+  nalma.mark <- read.csv("/Users/emdoughty/Dropbox/Proposal/NOW_intervals_edit.csv")
+  nalma.mark <- nalma.mark[,1:3]
+ #nalma.add  <- rbind(c("Aquilian", 84, 70),c("Lancian", 70, 66),c("Puercan", 66, 64.81)); colnames(nalma.add) <- colnames(nalma.mark)
+ # nalma.mark <- rbind(nalma.mark, nalma.add)
+#  nalma.mark[,2] <- as.numeric(nalma.mark[,2])
+ # nalma.mark[,3] <- as.numeric(nalma.mark[,3])
+ # nalma.mark <- nalma.mark[order(as.numeric(nalma.mark$Max_age), decreasing = TRUE),]
+  rownames(nalma.mark) <- nalma.mark$CHRON
+  colnames(nalma.mark) <- c("NALMA_Subdivision", "ageBase","ageTop")
+  nalma.mark <- nalma.mark[,-1]
+  nalma.mark <- nalma.mark[,c(2,1)]
+  intervals <- nalma.mark
+  
+  save.path.bins <- paste0(interval.type)
+}
+
+```
+
+```{r}
+ measure.mat <- getMeasureMatWithBodyMasses()
+  
+  ####################################################################################################################################
+  #### reduces matrix to just the focal order(s)
+  ####################################################################################################################################
+  
+  archaic.ung <- read.csv("/Users/emdoughty/Dropbox/Code/ArchaicUngulate_UploadFile_2021_4_29.csv")
+  
+  archaic.Mat.tot <- getMeasureMatCondylarths(data.raw = archaic.ung, occs = occs, 
+                                              col.order = colnames(measure.mat), 
+                                              all.bm = FALSE,
+                                              regression = "ArchaicNonselenodonts")
+  #test <- jon_archicBodyMassEstim()
+  #test.bm <- 10^test$bodyMass
+  #test.bm <- test.bm/1000
+  #test.bm <- log10(test.bm)
+  
+  measure.mat <- rbind(measure.mat, archaic.Mat.tot)
+  
+  focal.order <- c("Artiodactyla", "Perissodactyla")
+  focal.family <- unique(occs[occs$order %in% focal.order,]$family)
+  add.family <- c("Arctocyonidae", "Chriacidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+  focal.family <- c(as.character(focal.family), add.family)
+  focal.family <- focal.family[!focal.family %in% ""]
+  focal.family <- focal.family[order(focal.family)]
+  
+  bigList <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & (occs$order %in% focal.order | occs$family %in% add.family)), c("order","family", "genus", "accepted_name")])
+  #bigList.cond <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% add.family), c("order","family", "genus", "accepted_name")])
+ # bigList <- rbind(bigList,bigList.cond)
+  
+  bigList <- bigList[order(bigList$order, bigList$family, bigList$genus, bigList$accepted_name),]
+  shortFam <- sort(unique(bigList$family[bigList$family %in% focal.family]))	
+  
+  bigList$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigList$accepted_name)
+  measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$family %in% shortFam], ]
+  
+  #this.rank <- "genus"
+if (this.rank=="genus") measure.mat<- makeOneGenusMatFromSpecimenMat(measure.mat)
+```
+
+```{r}
+pred.data <- read.csv("~/Dropbox/Proposal/predator_data_final.csv")
+colnames(pred.data) <- c("family", "taxon",	"max_ma","min_ma",	"m1L",	"rbl",	"bodyMass",	"Citation")
+pred.data$taxon <- gsub(pattern = "[[:space:]]", replacement = "_", x = pred.data$taxon)
+rownames(pred.data) <- pred.data$taxon
+
+pred.data[,c("bodyMass")] <- log10(pred.data[,c("bodyMass")])
+pred.data <- pred.data[is.finite(pred.data$bodyMass),]
+
+focal.orderPred <- c("Carnivora", "Creodonta","Hyaenodonta")
+#occsPred <- occs[occs$order %in% focal.orderPred,]
+focal.familyPred <- unique(occs[occs$order %in% focal.orderPred,]$family)
+focal.familyPred <- c(as.character(focal.familyPred), "Viverravidae")
+
+focal.familyPred <- focal.familyPred[!focal.familyPred%in% ""]
+focal.familyPred <- focal.familyPred[order(focal.familyPred)]
+
+bigListPred <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.familyPred), c("order","family", "genus", "accepted_name")])
+bigListPred <- bigListPred[order(bigListPred$order, bigListPred$family, bigListPred$genus, bigListPred$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+
+bigListPred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigListPred$accepted_name)
+bigListPred <- bigListPred[bigListPred$accepted_name %in% pred.data$taxon,]
+shortFamPred <- sort(unique(bigListPred$family[bigListPred$family %in% focal.familyPred]))	
+
+#pred.data <- getDateTaxa(measure.mat = pred.data, occs=occsPred, this.rank = "species")
+pred.data <- pred.data[complete.cases(pred.data),]
+
+#this.rank <- "genus"
+if (this.rank=="genus") {
+  get.genus <- strsplit(pred.data$taxon, "_")
+  pred.data$genus <- sapply( get.genus, "[", 1 )
+
+  pred.data <- makeOneGenusMatFromSpecimenMat(pred.data)
+} 
+
+```
+
+```{r}
+if(is.null(repIntLoad))
+{
+do.parallel <- TRUE
+	if (do.parallel) require(parallel)
+reps <- 10000
+do.subsample <- FALSE
+quota <- 0.4
+do.disparity <- FALSE
+bootstrapSpecimens <- FALSE
+bootstrapSpecies <- FALSE
+bootstrapSpeciesWithinIntervals <- FALSE
+plotHist <- FALSE
+do.heuristic <- TRUE
+	extra.intvs <- 0
+do.rangethrough <- TRUE
+save.files <- TRUE
+
+if (bootstrapSpecies) holderMat <- measure.mat
+
+if (plotHist) {
+	quartz("Guild Histograms")
+	par(mfrow=c((nrow(intervals)), 3), mar=c(0,0,0.75,0), cex.axis=0.5, cex.main=0.75)
+}
+
+repIntOccs <- list()
+
+################################################################################################################################################
+#### get species within intervals
+################################################################################################################################################
+
+for (rep in seq_len(reps)) {
+	cat("Beginning Rep", rep, "of", reps, "...\r")
+	##################################################We need to update this sbootstrap section
+	if (bootstrapSpecimens) {
+		measure.mat <- specimenMat[sample.int(nrow(specimenMat), size=nrow(specimenMat), replace=TRUE),]
+		measure.mat <- aggregate(measure.mat, by=list(taxon=specimenMat$taxon), mean, na.rm=TRUE)
+		rownames(measure.mat) <- measure.mat$taxon
+		measure.mat[sapply(measure.mat, is.nan)] <- NA
+		measure.mat[,"reg"] <- as.character(famList$reg[match(measure.mat$taxon,famList$taxon)])
+		measure.mat[,"bodyMass"] <- makeBodyMasses(measure.mat, regList, best.only=TRUE)
+	}
+	if (bootstrapSpecies) measure.mat <- holderMat[sample.int(n=nrow(measure.mat), size=nrow(measure.mat), replace=TRUE),]
+
+	col.dates <- getCollectionAgesFromOccs(occs=occs[, c("collection_no", "max_ma", "min_ma")], random=TRUE)
+	occDates <- col.dates$collection_age[match(occs$collection_no, col.dates$collection_no)]
+	intOccs <- apply(intervals, 1, function(thisIntv) occs$occurrence_no[occDates > thisIntv[1] & occDates <= thisIntv[2]]) # greater than ageTop, less than or equal to ageBase
+
+	if (do.subsample) { 
+		nOccs <- sapply(intOccs, length)
+	 	# nTaxa <- sapply(intSp, length)			### if you want to set the quota no lower than the maximum number of SIB taxa; intSp is required for this to work, so has to be done above
+	 	nTaxa <- 0									### set to zero to simply set the quota to the minimum number of occurrences
+		quota <- max(c(max(nTaxa), min(nOccs)))		### quota is either the maximum number of observed taxa, or the minimum number of occurrences
+		cat("Subsampling quota set to", quota, "occurrences")
+
+		intOccs <- lapply(X=intOccs, FUN=sample, size=quota)
+	}
+	
+	repIntOccs[[rep]] <- intOccs 
+}
+
+repIntTaxa <- getRepIntTaxaFromRepIntOccs(repIntOccs, this.rank=this.rank, do.rangethrough=do.rangethrough)
+
+print("Completed getting taxa with intervals")
+
+}
+
+if(!is.null(repIntLoad))
+{
+  load(repIntLoad)
+}
+
+```
+
+```{r}
+#need to refill nominal groupings or remove them
+
+rem.col <- c("family","genus","reg.vec")
+measure.mat <- measure.mat[,!colnames(measure.mat) %in% rem.col]
+
+countCube_herb <- sapply(repIntTaxa, function(this.rep) {
+  sapply(this.rep, function(this.intv, this.rep) {
+    hist(measure.mat[,"bodyMass"][match(this.intv, measure.mat$taxon)], 
+         breaks= bmBreaks_herb, plot=FALSE)$counts
+  }, this.rep=this.rep)
+}, simplify = "array")
+
+#countCube <- countCube[,,1]
+
+sizecateg <- c("rabbit (<5 kg)", "water deer (5-25 kg)",#"dog (5-25 kg)", could also do beaver for 5-25kg
+               "antelope (25-150kg)", "horse (150-500 kg)", 
+               "rhino (500-1000 kg)")
+
+dimnames(countCube_herb) <- list(sizecateg, rownames(intervals), NULL)
+
+```
+
+```{r}
+rem.col <- c("family","genus","reg.vec")
+pred.data <- pred.data[,!colnames(pred.data) %in% rem.col]
+
+countCube_pred <- sapply(repIntTaxa, function(this.rep) {
+  sapply(this.rep, function(this.intv, this.rep) {
+    hist(pred.data[,"bodyMass"][match(this.intv, pred.data$taxon)], 
+         breaks= bmBreaks_pred, plot=FALSE)$counts
+  }, this.rep=this.rep)
+}, simplify = "array")
+
+#countCube <- countCube[,,1]
+
+sizecateg <- c("<1kg",
+               "1kg to 7kg",
+               "7kg to 21kg", 
+               "21kg to 100kg",
+               ">100kg")
+
+dimnames(countCube_pred) <- list(sizecateg, rownames(intervals), NULL)
+
+```
+
+# Functional Diversity Through Time
+
+```{r}
+#quartz(width=6.89)
+#par(mfrow=c(2,1), mar=c(4,4,1.6,4), mgp=c(2, 1,0)) #, height = 2.15, width = 8.21)
+
+   	prop_herb <- t(apply(countCube_herb, c(1,2), mean, na.rm=TRUE))
+		colnames(prop_herb)[colnames(prop_herb)==""] <- "indeterminate"
+		# dimnames(prop) <- list(rownames(intervals), shortFam)
+		plotStackedRichness(this.box=prop_herb, intervals=intervals, reorder.taxa = FALSE, do.log=FALSE, overlay.labels=FALSE, numbers.only=FALSE, legend=FALSE, xlim = c(65, #xlim=c(max(intervals, na.rm=TRUE)
+		                  min(intervals, na.rm=TRUE)))
+```
+	
+```{r}
+#quartz(width=6.89)
+#par(mfrow=c(2,1), mar=c(4,4,1.6,4), mgp=c(2, 1,0)) #, height = 2.15, width = 8.21)
+
+  	prop_pred <- t(apply(countCube_pred, c(1,2), mean, na.rm=TRUE))
+		colnames(prop_pred)[colnames(prop_pred)==""] <- "indeterminate"
+		# dimnames(prop) <- list(rownames(intervals), shortFam)
+		plotStackedRichness(this.box=prop_pred, intervals=intervals, reorder.taxa = FALSE, do.log=FALSE, overlay.labels=FALSE, numbers.only=FALSE, legend=FALSE, xlim = c(65, #xlim=c(max(intervals, na.rm=TRUE)
+		                  min(intervals, na.rm=TRUE)))
+```
+
+# Pred/Prey Richness Plots
+
+```{r}
+rowSums(prop_pred)
+rowSums(prop_herb)
+
+pred_prey_ratio <- rowSums(prop_pred)/rowSums(prop_herb)
+
+continental_richness <- rowSums(prop_pred) + rowSums(prop_herb)
+
+plot(continental_richness, pred_prey_ratio, cex = 0.25)
+text(continental_richness, pred_prey_ratio, labels = names(pred_prey_ratio), cex = 0.75)
+
+```
+
+# Correlation Matrices
+
+## "raw" correlations
+```{r}
+#cor.p <- cor.mtest(cbind(xval, yval), method = "pearson")
+
+ungulates <- prop_herb
+predators <- prop_pred
+
+all.val <- cbind(ungulates, predators)
+
+corr.results.both <- cor(ungulates, predators, method = "spearman")
+cor.p <- cor.mtest(all.val)$p
+
+cor.p.culled <- cor.p[rownames(cor.p) %in% colnames(ungulates),]
+cor.p.culled <- cor.p.culled[,colnames(cor.p.culled) %in% colnames(predators)]
+
+corrplot::corrplot(corr.results.both,  mar = c(1,1,1,1), p.mat = cor.p.culled, #insig = "blank",
+                   cl.align.text = 'l', addCoef.col = 'black')
+
+mtext("Large Herbivore", side = 2, line = -3, cex = 1.5)
+mtext("Predator", side = 3, adj = 0.6, line = 0, cex = 1.5)
+
+```
+
+## First Differences Correlation
+
+```{r}
+pred.prey.DivFirstDiff <- getDiversity1stDiff(data.mat = t(prop_pred), intervals = intervals)
+
+UngualteBMGroupDiv_FirstDiff <- getDiversity1stDiff(data.mat = t(prop_herb), intervals = intervals)
+
+#UngualteBMGroupDiv_FirstDiff
+
+#pred.prey.DivFirstDiff
+
+#should make list of plots of each catagpry through time to make sure data is stationary
+
+ungulates <- t(as.matrix(UngualteBMGroupDiv_FirstDiff))
+predators <- t(as.matrix(pred.prey.DivFirstDiff))
+
+all.val <- cbind(ungulates, predators)
+
+corr.results.both <- cor(ungulates, predators, method = "spearman")
+cor.p <- cor.mtest(all.val)$p
+
+cor.p.culled <- cor.p[rownames(cor.p) %in% colnames(ungulates),]
+cor.p.culled <- cor.p.culled[,colnames(cor.p.culled) %in% colnames(predators)]
+
+corrplot::corrplot(corr.results.both,  mar = c(1,1,1,1), p.mat = cor.p.culled, #insig = "blank",
+                   cl.align.text = 'l', addCoef.col = 'black')
+
+
+mtext("Large Herbivore", side = 2, line = -3, cex = 1.5)
+mtext("Predator", side = 3, adj = 0.6, line = 0, cex = 1.5)
+
+```
+
+# Handley Analysis
+
+```{r}
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/Taxon_handleyResult_ungulates_SampleStandardized=TRUE_Reps=1000Jonathans_MacBook_Pro.local##------ Mon Sep  6 21:16:19 2021 ------##.Rdata")
+#load("/Users/emdoughty/Dropbox/Code/R/Results/Taxon_handleyResult_ungulates_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Sep 11 05:29:03 2021 ------##.Rdata")
+#load("/Users/emdoughty/Dropbox/Code/R/Results/BM_handleyResult_ungulates_this.rank=species_timebin=nalma_SampleStandardized=TRUE_Reps=10000Jonathans_MBP.lan##------ Wed Mar  2 23:16:29 2022 ------##.Rdata")
+#repIntTaxa_ung <- repIntTaxa
+#repIntOccs_ung <- repIntOccs
+#taxCube_ung <- taxCube
+#optList_tax_median_ung <- optList_tax_median
+#optList_tax_allReps_ung <- optList_tax_allReps
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/BM_handleyResult_ungulates_SampleStandardized=TRUE_Reps=1000Jonathans_MacBook_Pro.local##------ Mon Sep  6 22:10:28 2021 ------##.Rdata")
+#load("/Users/emdoughty/Dropbox/Code/R/Results/BM_handleyResult_ungulates_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Sep 11 09:56:37 2021 ------##.Rdata")
+load("/Users/emdoughty/Dropbox/Code/R/Results/BM_handleyResult_ungulates_this.rank=species_timebin=nalma_SampleStandardized=TRUE_Reps=10000Jonathans_MBP.lan##------ Thu Mar  3 22:25:10 2022 ------##.Rdata")
+#countCube_ung <- countCube
+optList_bm_median_ung <- optList_bm_median
+optList_bm_allReps_ung <- optList_bm_allReps
+```
+
+```{r}
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/Taxon_handleyResult_carnivores_SampleStandardized=FALSE_Reps=1000Armageddon_2.local##------ Wed Sep  8 03:30:45 2021 ------##.Rdata")
+#load("/Users/emdoughty/Dropbox/Code/R/Results/Taxon_handleyResult_carnivores_SampleStandardized=TRUE_Reps=10000Jonathans_MacBook_Pro.local##------ Sat Oct  2 11:28:32 2021 ------##.Rdata")
+#repIntTaxa_pred <- repIntTaxa
+#repIntOccs_pred <- repIntOccs
+#taxCube_pred <- taxCube
+#optList_tax_median_pred <- optList_tax_median
+#optList_tax_allReps_pred <- optList_tax_allReps
+#load("/Users/emdoughty/Desktop/GSA 2021 Hadley Runs/BM_handleyResult_carnivores_SampleStandardized=FALSE_Reps=1000Armageddon_2.local##------ Wed Sep  8 04:43:09 2021 ------##.Rdata")
+load("/Users/emdoughty/Dropbox/Code/R/Results/BM_handleyResult_carnivores_allCateg_this.rank=species_timebin=nalma_SampleStandardized=TRUE_Reps=10000Jonathans_MBP.lan##------ Fri Mar  4 20:01:17 2022 ------##.Rdata")
+#countCube_pred <- countCube
+optList_bm_median_pred <- optList_bm_median
+optList_bm_allReps_pred <- optList_bm_allReps
+```
+
+```{r}
+bm_quants_ung <- apply(sapply(repIntTaxa, function(y) sapply(y, function(x) quantile(measure.mat[as.character(x),"bodyMass"], probs=c(0, 0.25, 0.5, 0.75, 1.0), na.rm=TRUE)), simplify = "array"), c(1,2), median, na.rm=TRUE)
+
+bm_quants_pred <- apply(sapply(repIntTaxa, function(y) sapply(y, function(x) quantile(pred.data[as.character(x),"bodyMass"], probs=c(0, 0.25, 0.5, 0.75, 1.0), na.rm=TRUE)), simplify = "array"), c(1,2), median, na.rm=TRUE)
+```
+
+### Determine which breaks were the most common
+
+```{r}
+par(mfrow = c(2,1))
+plotHistShiftinInterval(optList = optList_bm_allReps_ung,
+                        intervals = intervals,
+                        reps = 10000,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (Ungulate)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "deepskyblue4",
+                        border = "deepskyblue1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+plotHistShiftinInterval(optList = optList_bm_allReps_pred,
+                        intervals = intervals,
+                        reps = 10000,
+                        xaxp = c(70,0,14),
+                        main = "Number of Replicates with a Body Mass Distribution Shift (Predator)",
+                        xlab = "Time (Ma)",
+                        xlim = c(65,0),
+                        cex = 0.3,
+                        col = "firebrick4",
+                        border = "firebrick1",
+                        do.subepochs = TRUE,
+                        labels = TRUE,
+                        freq=TRUE)
+```
+
+```{r}
+#quartz(width=6.89)
+#par(mfrow=c(2,1), mar=c(4,4,0.5,0.5)) #, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = measure.mat, plot.y = "bodyMass", intervals = intervals, occs = occs, this.rank = "species", 
+             bigList = bigList, shortFam = shortFam, repIntTaxa = repIntTaxa_ung, quants = bm_quants_ung,
+             optList_bm_median = optList_bm_median_ung,  
+             specOcc.col = "gray0", specOcc.alpha = 0.5,
+             plot.breaks = TRUE,  break.text = FALSE, break.col = "blue4", #manual.breaks = c(61, 57, 51, 39, 33, 25, 5),
+             ylab = "log bodymass (kg)", xlab = "Time (Ma)", xaxp = c(70,0,14), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE,
+             col.axis = "black", col.lab = "black", poly.col = "deepskyblue4", median.col = c("darkturquoise", "deepskyblue4", "deepskyblue1"))
+
+```
+
+```{r}
+#quartz(width=6.89)
+#par(mfrow=c(2,1), mar=c(4,4,0.5,0.5)) #, mgp=c(2, 1,0))
+shoulderPlot(measure.mat = pred.data, plot.y = "bodyMass", intervals = intervals, occs = occs, this.rank = "species", 
+             bigList = bigListPred, shortFam = shortFamPred, repIntTaxa = repIntTaxa_pred, quants = bm_quants_pred,
+             optList_bm_median = optList_bm_median_pred,  #ylim = c(-0.5,  4),
+             specOcc.col = "gray0", specOcc.alpha = 0.5,
+             plot.breaks = TRUE,  break.text = FALSE, break.col = "firebrick4", #manual.breaks = c(57, 41, 25),
+             ylab = "log Bodymass (kg)", xlab = "Time (Ma)", xaxp = c(75,0,15), cex.axis = 1, cex.lab = 1, 
+             do.subepochs = TRUE,  do.quants = TRUE,
+             col.axis = "black", col.lab = "black", poly.col = "darkorange4", median.col = c("goldenrod1", "darkorange4", "darkorange1"))
+```
+
+# Taxonomic Turnover
+### removed from current runs
+
+```{r}
+#to properly siz eth eplot drag the plot window in rstudio to the point where source is on source and save when making new file to run this outside markdown
+######1)copy this code to new untitled doc
+######2)drag the plot window over to where soruce part of "source on save"
+######3) run this code
+######4) export as png
+
+#quartz(width=6.89)
+#par(mfrow=c(2,1), mar=c(4,4,0.5,0.5)) #, mgp=c(2, 1,0))
+#par(bg=NA)
+#taxCube <- sapply(repIntTaxa_ung, function(y) sapply(y, function(x) tabulate(match(bigList$family[as.character(bigList$accepted_name) %in% x], shortFam), nbins=length(shortFam)), simplify="array"), simplify="array")
+#dimnames(taxCube) <- list(shortFam, rownames(intervals), NULL)
+
+#prop_herb <- t(apply(taxCube, c(1,2), mean, na.rm=TRUE))
+#	colnames(prop)[colnames(prop)==""] <- "indeterminate"
+#dimnames(prop)[[2]] <-  shortFam
+
+#lotStackedRichness(this.box=prop_herb, intervals=intervals, reorder.taxa = TRUE, do.log=FALSE, overlay.labels=FALSE, numbers.only=FALSE, legend=FALSE, xlim = c(65, min(intervals, na.rm=TRUE)))
+```
+
+```{r}
+#quartz(width=6.89)
+#par(mfrow=c(2,1), mar=c(4,4,0.5,0.5)) #, mgp=c(2, 1,0))
+#par(bg=NA)
+#taxCube <- sapply(repIntTaxa_pred, function(y) sapply(y, function(x) tabulate(match(bigListPred$family[as.character(bigListPred$accepted_name) %in% x], shortFamPred), nbins=length(shortFamPred)), simplify="array"), simplify="array")
+#dimnames(taxCube) <- list(shortFamPred, rownames(intervals), NULL)
+
+#prop_pred <- t(apply(taxCube, c(1,2), mean, na.rm=TRUE))
+#	colnames(prop)[colnames(prop)==""] <- "indeterminate"
+#dimnames(prop)[[2]] <-  shortFamPred
+
+#plotStackedRichness(this.box=prop_pred, intervals=intervals, reorder.taxa = TRUE, do.log=FALSE, overlay.labels=FALSE, numbers.only=FALSE, legend=FALSE, xlim = c(65, min(intervals, na.rm=TRUE)))
+```
+
+
+

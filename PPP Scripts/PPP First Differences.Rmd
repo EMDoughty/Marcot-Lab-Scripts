@@ -1,0 +1,615 @@
+---
+title: "Large Predator and Prey First Differences"
+author: "Evan Doughty"
+date: "8/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("~/Dropbox/code/R/common_src/strat.R")
+source("~/Dropbox/code/R/common_src/occFns.R")
+source("~/Dropbox/code/R/common_src/sampling.R") 
+source("~/Dropbox/code/R/common_src/utils_marcot.R")
+source("~/Dropbox/code/R/common_src/CzTimescale.R") 
+source("~/Dropbox/Code/R/common_src/taxonomicEv.R")
+
+source('~/Dropbox/code/R/dentalMeasurements/src/src_dentalDataFns.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_bodyMassEstimation.R', chdir = TRUE)
+source('~/Dropbox/code/R/dentalMeasurements/src/src_ecologyAnalysisFns.R', chdir = TRUE)
+
+source('~/Dropbox/Code/Recreate Dental Plots Source 2021_6_2.R')
+require(stringr)
+```
+
+
+```{r, include=FALSE}
+occs <- read.csv("http://paleobiodb.org/data1.2/occs/list.csv?base_name=Mammalia&continent=NOA&max_ma=66&min_ma=0&timerule=overlap&show=full&limit=all", stringsAsFactors=TRUE, strip.white=TRUE)
+occs <- occs[!occs$order %in% c("Cetacea", "Desmostylia", "Sirenia"), ]
+occs <- occs[!occs$family %in% c("Allodelphinidae", "Balaenidae", "Balaenopteridae", "Delphinidae", "Desmatophocidae", "Desmostylidae", 
+                                 "Didelphidae","Dugongidae","Enaliarctidae", "Eschrichtiidae","Iniidae", "Kentriodontidae", "Kogiidae", 
+                                 "Odobenidae", "Otariidae", "Paleoparadoxiidae", "Phocidae", "Physeteridae", "Platanistidae", "Pontoporiidae", 
+                                 "Protocetidae", "Squalodontidae", "Ziphiidae"), ]
+occs$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = occs$accepted_name)	#replace spaces with underscores
+
+####################################################################################################################################
+
+#dental measures are in centimeters while body mass is logged kg
+measure.mat <- getMeasureMatWithBodyMasses()
+this.rank <- "species"
+if (this.rank=="genus") measure.mat <- makeOneGenusMatFromSpecimenMat(measure.mat)
+
+####################################################################################################################################
+#### reduces matrix to just the focal order(s)
+####################################################################################################################################
+
+# focal.order <- "Artiodactyla"
+# focal.order <- "Perissodactyla"
+focal.order <- c("Artiodactyla", "Perissodactyla")
+focal.family <- unique(occs[occs$order %in% focal.order,]$family)
+focal.family <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.family <- focal.family[!focal.family %in% ""]
+focal.family <- focal.family[order(focal.family)]
+
+bigList <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.family), c("order","family", "genus", "accepted_name")])
+bigList <- bigList[order(bigList$order, bigList$family, bigList$genus, bigList$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+shortFam <- sort(unique(bigList$family[bigList$family %in% focal.family]))	
+
+bigList$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigList$accepted_name)
+
+# matrix(measure.mat$taxon[!measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order]], ncol=1)
+# matrix(bigList$accepted_name[bigList$order %in% focal.order][! bigList$accepted_name[bigList$order %in% focal.order] %in% measure.mat$taxon], ncol=1)
+measure.mat <- measure.mat[measure.mat$taxon %in% bigList$accepted_name[bigList$order %in% focal.order], ]
+
+#remove added columns...cus why I set it to not do that but still gets through....
+#fix.columns<- c("taxon", "P2_L", "P2_W", "P3_L", "P3_W", "P4_L", "P4_W", "M1_L", "M1_W", "M2_L", "M2_W", "M3_L", "M3_W",
+# "p2_l", "p2_w", "p3_l", "p3_w", "p4_l", "p4_w", "m1_l", "m1_w", "m2_l", "m2_w", "m3_l", "m3_w",
+# "p4_a", "m1_a", "m2_a", "m3_a", "M2_A",
+# "family", "genus", "reg.vec", "bodyMass", "col.fam", "sym.fam")
+##
+#measure.mat <- measure.mat[,colnames(measure.mat) %in% fix.columns]
+
+#remove Megacerops curtus due to wierd placement on pca
+measure.culled <- measure.mat[!rownames(measure.mat) %in% "Megacerops_curtus",]
+
+
+archaic.ung <- read.csv("/Users/emdoughty/Dropbox/Code/ArchaicUngulate_UploadFile_2021_4_29.csv")
+
+archaic.Mat.tot <- getMeasureMatCondylarths(data.raw = archaic.ung, occs = occs, 
+                                            col.order = colnames(measure.culled), 
+                                            all.bm = FALSE,
+                                            regression = "ArchaicNonselenodonts")
+
+#write.csv(archaic.Mat.tot,"/Users/emdoughty/Dropbox/Code/R/Carnivore Paleobio Seminar/ArchaicUngulateBodyMass.csv")
+
+measure.culled <- rbind(measure.culled, archaic.Mat.tot)
+measure.culled <- getDateTaxa(measure.mat = measure.culled, occs=occs, this.rank = "species")
+
+load("~/Dropbox/Code/Ungulate10Rep_BM_results_2021_7_19.RData")
+bm_quants_ung <- getTraitQuants(measure.mat = measure.culled, traitCol = "bodyMass", repIntTaxa = repIntAll$RepsTaxa)
+```
+
+```{r,echo=FALSE}
+intervals <- makeIntervals(1, 66, 2)
+```
+
+```{r}
+ung.firstdiff.max <- diff(rev(bm_quants_ung[5,]), lag = 1)
+ung.firstdiff.median <- diff(rev(bm_quants_ung[3,]), lag = 1)
+ung.firstdiff.min <- diff(rev(bm_quants_ung[1,]), lag = 1)
+ung.firstdiff.mat <- cbind(Time = rev(intervals$ageBase[1:(nrow(intervals)-1)]),ung.firstdiff.max, ung.firstdiff.median, ung.firstdiff.min)
+
+rownames(ung.firstdiff.mat) <- paste(rev(intervals$ageBase[1:(nrow(intervals)-1)]), "Ma", sep = " ")
+
+
+ung.firstdiff.mat
+```
+
+```{r, echo = FALSE}
+plot(NULL,xlim = c(66,0), ylim = c(min(ung.firstdiff.max, ung.firstdiff.median, ung.firstdiff.min),c(max(ung.firstdiff.max, ung.firstdiff.median, ung.firstdiff.min))),
+     xlab = "Time (Ma)",
+     ylab = "First Differences",
+     xaxp=c(70,0,14),
+     main = "Ungulate First Differences")
+points(ung.firstdiff.mat[,"Time"], ung.firstdiff.mat[,2], col = "black")
+points(ung.firstdiff.mat[,"Time"], ung.firstdiff.mat[,3], col = "firebrick4")
+points(ung.firstdiff.mat[,"Time"], ung.firstdiff.mat[,4], col = "orange")
+lines(ung.firstdiff.mat[,"Time"], ung.firstdiff.mat[,2], col = "black")
+lines(ung.firstdiff.mat[,"Time"], ung.firstdiff.mat[,3], col = "firebrick4")
+lines(ung.firstdiff.mat[,"Time"], ung.firstdiff.mat[,4], col = "orange")
+
+legend("topright", legend= c("max","median", "min"), col = c("black", "firebrick4","orange"), lty = 1,fill=NA, border=FALSE,  cex=0.75, box.lty=1)
+```
+
+```{r, include=FALSE}
+pred.data <- read.csv("~/Dropbox/Code/R/Carnivore Paleobio Seminar/Predator_data_all.csv")
+
+#get column names to be comparable to ungulate data so not break anything
+colnames(pred.data) <- c("family", "taxon",	"max_ma","min_ma",
+                         "m1L",	"rbl",	"BM_all_carnivoran",	"BM_extant_reg")
+
+pred.data$taxon <- gsub(pattern = "[[:space:]]", replacement = "_", x = pred.data$taxon)
+
+rownames(pred.data) <- pred.data$taxon
+
+#purge species wihtout dates or body mass
+#pred.data <- pred.data[complete.cases(pred.data),]
+
+#log bodymasses
+pred.data[,c("BM_all_carnivoran",	"BM_extant_reg")] <- log10(pred.data[,c("BM_all_carnivoran",
+                                                                          "BM_extant_reg")])
+
+focal.orderPred <- c("Carnivora", "Creodonta","Hyaenodonta","NO_ORDER_SPECIFIED")
+occsPred <- occs[occs$order %in% focal.orderPred,]
+focal.familyPred <- unique(occs[occs$order %in% focal.orderPred,]$family)
+focal.familyPred <- c(as.character(focal.familyPred), "Viverravidae","Hyaenodontidae","NO_FAMILY_SPECIFIED")
+#focal.familyPred <- c(as.character(focal.family),"Arctocyonidae", "Hyopsodontidae","Periptychidae","Phenacodontidae")
+focal.familyPred <- focal.familyPred[!focal.familyPred%in% ""]
+focal.familyPred <- focal.familyPred[order(focal.familyPred)]
+
+bigListPred <- unique(occs[((occs$accepted_rank =="species" | occs$accepted_rank =="genus") & occs$family %in% focal.familyPred), c("order","family", "genus", "accepted_name")])
+bigListPred <- bigListPred[order(bigListPred$order, bigListPred$family, bigListPred$genus, bigListPred$accepted_name),]
+# bigList[order(bigList$family, bigList$accepted_name),]
+
+bigListPred$accepted_name <- gsub(pattern = "[[:space:]]", replacement = "_", x = bigListPred$accepted_name)
+
+bigListPred <- bigListPred[bigListPred$accepted_name %in% pred.data$taxon,]
+
+shortFamPred <- sort(unique(bigListPred$family[bigListPred$family %in% focal.familyPred]))	
+
+pred.data <- getDateTaxa(measure.mat = pred.data, occs=occsPred, this.rank = "species")
+
+#write.csv(pred.data, file = "~/Dropbox/Code/Pred_data_check.csv")
+
+pred.data <- pred.data[complete.cases(pred.data),] #some species have body mass but no rbl
+```
+
+```{r, include = FALSE}
+#carnivore
+load("~/Dropbox/Code/AllCarniv100RepHadleyOutput_2021_7_16.Rdata")
+load("~/Dropbox/Code/Carnivore100RepTaxHadleyOutput_2021_7_19.Rdata")
+```
+
+```{r}
+pred.firstdiff.max <- diff(rev(bm_quantsPred_allcarniv[5,]), lag = 1)
+pred.firstdiff.median <- diff(rev(bm_quantsPred_allcarniv[3,]), lag = 1)
+pred.firstdiff.min <- diff(rev(bm_quantsPred_allcarniv[1,]), lag = 1)
+pred.firstdiff.mat <- cbind(Time= rev(intervals$ageBase[1:(nrow(intervals)-1)]), pred.firstdiff.max, pred.firstdiff.median, pred.firstdiff.min)
+
+rownames(pred.firstdiff.mat) <- paste(rev(intervals$ageBase[1:(nrow(intervals)-1)]), "Ma", sep = " ")
+
+pred.firstdiff.mat
+```
+
+```{r, echo = FALSE}
+plot(NULL,xlim = c(66,0), ylim = c(min(pred.firstdiff.max, pred.firstdiff.median, pred.firstdiff.min),c(max(pred.firstdiff.max, pred.firstdiff.median, pred.firstdiff.min))),
+     xlab = "Time (Ma)",
+     ylab = "First Differences",
+     xaxp=c(70,0,14),
+     main = "Predator First Differences")
+points(pred.firstdiff.mat[,"Time"], pred.firstdiff.mat[,2], col = "black")
+points(pred.firstdiff.mat[,"Time"], pred.firstdiff.mat[,3], col = "blue")
+points(pred.firstdiff.mat[,"Time"], pred.firstdiff.mat[,4], col = "orchid4")
+lines(pred.firstdiff.mat[,"Time"], pred.firstdiff.mat[,2], col = "black")
+lines(pred.firstdiff.mat[,"Time"], pred.firstdiff.mat[,3], col = "blue")
+lines(pred.firstdiff.mat[,"Time"], pred.firstdiff.mat[,4], col = "orchid4")
+
+legend("topright", legend= c("max","median", "min"), col = c("black", "blue","orchid4"), lty = 1,fill=NA, border=FALSE, cex=0.75, box.lty=1)
+```
+
+#plot differences against each other
+
+```{r, include = FALSE}
+pred.firstdiff.mat <- rbind(rep(NA, 4), pred.firstdiff.mat)
+rownames(pred.firstdiff.mat) <- rev(paste(seq(3,65,2), "Ma", sep = " "))
+```
+
+```{r, echo=FALSE}
+plot(ung.firstdiff.mat[,"ung.firstdiff.max"], pred.firstdiff.mat[,"pred.firstdiff.max"],
+     col = "black", pch = 16,
+     xlab = "Ungulate First Differences", ylab = "Predator First Differences",
+     main = "First Difference Log10 Body Mass")
+points(ung.firstdiff.mat[,"ung.firstdiff.median"], pred.firstdiff.mat[,"pred.firstdiff.median"], col = "red", pch = 16)
+points(ung.firstdiff.mat[,"ung.firstdiff.min"], pred.firstdiff.mat[,"pred.firstdiff.min"], col = "blue", pch = 16)
+
+legend("topleft", legend= c("max","median", "min"), col = c("black", "red","blue"), pch = 16,fill=NA, border=FALSE, cex=0.75, box.lty=1)
+```
+
+```{r,echo = FALSE}
+colfunc <- colorRampPalette(colors = c("red","yellow","springgreen","royalblue"))
+col.nalma <- colfunc(nrow(ung.firstdiff.mat))
+
+plot(ung.firstdiff.mat[,"ung.firstdiff.max"], pred.firstdiff.mat[,"pred.firstdiff.max"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences", ylab = "Predator First Differences",
+     main = "First Difference for Max Log10 Body Mass (Max)")
+points(ung.firstdiff.mat[,"ung.firstdiff.max"], pred.firstdiff.mat[,"pred.firstdiff.max"], col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat[,"pred.firstdiff.max"]~ung.firstdiff.mat[,"ung.firstdiff.max"])
+abline(best.fit)
+#eq.text <- paste("y =",summary(best.fit)$coefficients[,1][2],"* x", "+", summary(best.fit)$coefficients[,1][1],sep=" ")
+#text(min(ung.firstdiff.mat[,"ung.firstdiff.max"]),
+#     max(pred.firstdiff.mat[,"pred.firstdiff.max"], na.rm = TRUE),pos = 4,labels = eq.text, col = "black", cex = 0.75)
+##text(min(ung.firstdiff.mat[,"ung.firstdiff.max"]),
+#     max(pred.firstdiff.mat[,"pred.firstdiff.max"]-0.05, na.rm = TRUE),pos = 4,
+#     labels = paste("Rsqr =", summary(best.fit)$r.squared, 
+#                    "Adj Rsqr=",summary(best.fit)$adj.r.squared,
+#                    "P-value =", summary(best.fit)$)
+#     , col = "black", cex = 0.75)
+
+#points(ung.firstdiff.mat[,"ung.firstdiff.median"], pred.firstdiff.mat[,"pred.firstdiff.median"], col = "red", pch = 16)
+#points(ung.firstdiff.mat[,"ung.firstdiff.min"], pred.firstdiff.mat[,"pred.firstdiff.min"], col = "blue", pch = 16)
+
+legend("topright", legend = c("65Ma","55Ma", "45Ma", "35Ma","25Ma","15Ma","5Ma"), pch = 16,col = col.nalma[rownames(ung.firstdiff.mat) %in% c("65 Ma","55 Ma", "45 Ma", "35 Ma","25 Ma","15 Ma","5 Ma")], cex = 0.75)
+```
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat[,"ung.firstdiff.median"], pred.firstdiff.mat[,"pred.firstdiff.median"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences", ylab = "Predator First Differences",
+     main = "First Difference for Median Log10 Body Mass (Median)")
+points(ung.firstdiff.mat[,"ung.firstdiff.median"], pred.firstdiff.mat[,"pred.firstdiff.median"], col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat[,"pred.firstdiff.median"]~ung.firstdiff.mat[,"ung.firstdiff.median"])
+abline(best.fit)
+
+legend("topright", legend = c("65Ma","55Ma", "45Ma", "35Ma","25Ma","15Ma","5Ma"), pch = 16,col = col.nalma[rownames(ung.firstdiff.mat) %in% c("65 Ma","55 Ma", "45 Ma", "35 Ma","25 Ma","15 Ma","5 Ma")], cex = 0.75)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat[,"ung.firstdiff.min"], pred.firstdiff.mat[,"pred.firstdiff.min"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences", ylab = "Predator First Differences",
+     main = "First Difference for Min Log10 Body Mass (Min)")
+points(ung.firstdiff.mat[,"ung.firstdiff.min"], pred.firstdiff.mat[,"pred.firstdiff.min"], col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat[,"pred.firstdiff.min"]~ung.firstdiff.mat[,"ung.firstdiff.min"])
+abline(best.fit)
+
+legend("bottomright", legend = c("65Ma","55Ma", "45Ma", "35Ma","25Ma","15Ma","5Ma"), pch = 16,col = col.nalma[rownames(ung.firstdiff.mat) %in% c("65 Ma","55 Ma", "45 Ma", "35 Ma","25 Ma","15 Ma","5 Ma")], cex = 0.75)
+```
+
+```{r}
+summary(best.fit)
+```
+
+
+******
+
+# First Differences using NALMA bins
+```{r}
+#get color gradient for 2Ma Bins
+nalma.mark <- read.csv("/Users/emdoughty/Downloads/PPP_summary.csv")
+nalma.mark <- nalma.mark[,1:3]
+nalma.add  <- rbind(c("Aquilian", 84, 70),c("Lancian", 70, 66),c("Puercan", 66, 64.81)); colnames(nalma.add) <- colnames(nalma.mark)
+nalma.mark <- rbind(nalma.mark, nalma.add)
+nalma.mark[,2] <- as.numeric(nalma.mark[,2])
+nalma.mark[,3] <- as.numeric(nalma.mark[,3])
+nalma.mark <- nalma.mark[order(as.numeric(nalma.mark$Max_age), decreasing = TRUE),]
+rownames(nalma.mark) <- nalma.mark$NALMA_Subdivision
+colnames(nalma.mark) <- c("NALMA_Subdivision", "ageBase","ageTop")
+nalma.mark <- nalma.mark[,-1]
+nalma.mark <- nalma.mark[,c(2,1)]
+
+intervals <- nalma.mark
+```
+
+```{r, include=FALSE}
+rep.speciesNALMA <- getRepIntData(#bigList, 
+  #col.nam = NULL,
+  occs=occs,
+  intervals = intervals,
+  int_length = 2,
+  int_min = 1,
+  int_max = 95,
+  do.parallel = FALSE, 
+  reps = 1,
+  this.rank = "species",
+  do.rangethrough = TRUE)
+
+bm_quants_ung_NALMA <- getTraitQuants(measure.mat = measure.culled, traitCol = "bodyMass", repIntTaxa = rep.speciesNALMA$RepsTaxa)
+bm_quants_ung_NALMA <- bm_quants_ung_NALMA[,ncol(bm_quants_ung_NALMA):1]
+```
+
+## Ungulate First Differences for Max, Median, and Min
+```{r, echo=FALSE}
+ung.firstdiff.max_NALMA <- diff(rev(bm_quants_ung_NALMA[5,]), lag = 1)
+ung.firstdiff.median_NALMA <- diff(rev(bm_quants_ung_NALMA[3,]), lag = 1)
+ung.firstdiff.min_NALMA <- diff(rev(bm_quants_ung_NALMA[1,]), lag = 1)
+ung.firstdiff.mat_NALMA <- cbind(ung.firstdiff.max_NALMA, 
+                                 ung.firstdiff.median_NALMA, ung.firstdiff.min_NALMA)
+
+NALMA_rownames <- vector()
+for(xx in seq(1, nrow(ung.firstdiff.mat_NALMA),1))
+{
+        NALMA_rownames[xx] <- paste(rownames(intervals)[xx], 
+                                    rownames(intervals)[xx+1], sep="-")
+}
+
+rownames(ung.firstdiff.mat_NALMA) <- NALMA_rownames
+
+ung.firstdiff.mat_NALMA
+```
+
+## Predators First Differences for Max, Median, and Min
+
+```{r, echo=FALSE}
+bm_quantsPred_allcarniv_NALMA <- getTraitQuants(measure.mat = pred.data, traitCol = "BM_all_carnivoran" , 
+                                                repIntTaxa = rep.speciesNALMA$RepsTaxa)
+bm_quantsPred_allcarniv_NALMA <- bm_quantsPred_allcarniv_NALMA[,ncol(bm_quantsPred_allcarniv_NALMA):1]
+
+pred.firstdiff.max_NALMA <- diff(rev(bm_quantsPred_allcarniv_NALMA[5,]), lag = 1)
+pred.firstdiff.median_NALMA <- diff(rev(bm_quantsPred_allcarniv_NALMA[3,]), lag = 1)
+pred.firstdiff.min_NALMA <- diff(rev(bm_quantsPred_allcarniv_NALMA[1,]), lag = 1)
+pred.firstdiff.mat_NALMA <- cbind(pred.firstdiff.max_NALMA, pred.firstdiff.median_NALMA, pred.firstdiff.min_NALMA)
+
+rownames(pred.firstdiff.mat_NALMA) <- NALMA_rownames
+
+pred.firstdiff.mat_NALMA
+```
+
+```{r, echo=FALSE, eval=TRUE, fig.height=11, fig.width=8}
+
+setting.max2min <- c("Max", "Median", "Min")
+
+par(mfrow = c(4,3), oma = c(5,5,5,5))
+
+#ung vs carnivore
+#max vs max
+for(xx in seq(1, ncol(ung.firstdiff.mat_NALMA), 1))
+{
+  for(yy in seq(1, ncol(pred.firstdiff.mat_NALMA),1))
+  {
+    plot(ung.firstdiff.mat_NALMA[,xx], 
+         pred.firstdiff.mat_NALMA[,yy],
+         col = col.nalma, pch = 16, cex = 2,
+         xlab = "Ungulate First Differences", ylab = "Predator First Differences")
+    points(ung.firstdiff.mat_NALMA[,xx], 
+           pred.firstdiff.mat_NALMA[,yy],
+           col = "black", pch = 1, cex=2)
+    
+    if(yy == 1) mtext(setting.max2min[xx], side = 2, line = 4, cex = 1.5)
+    if(xx == 2 & yy == 1) mtext("Ungulate", side = 2, line = 6, cex = 1.5)
+    if(xx == 1) mtext(setting.max2min[yy], side = 3, line = 2, cex = 1.5)
+    if(xx == 1 & yy == 2) mtext("Predator", side = 3, line = 4, cex = 1.5)
+    
+    best.fit <- lm(pred.firstdiff.mat_NALMA[,yy]~ung.firstdiff.mat_NALMA[,xx])
+    abline(best.fit)
+    
+    if(round(summary(best.fit)$coefficients[8],3) <= 0.05) box(which = "plot", lty = "solid", col = "black", lwd = 4)
+    
+     mtext(text = paste("y=", round(summary(best.fit)$coefficients[2],3), "*x +",round(summary(best.fit)$coefficients[1],3), 
+                       sep= ""),
+          side = 3, line = -1, cex = 0.5)
+    mtext(text = paste("R^2=",round(summary(best.fit)$r.squared,3),
+                       "adj R^2=", round(summary(best.fit)$adj.r.squared,3),
+                       ";", sep = " "),
+          side = 3, line = -2, cex = 0.5)
+    mtext(text = paste("P-value=", round(summary(best.fit)$coefficients[8],3), sep = ""),
+          side = 3, line = -3, cex = 0.5)
+  }
+}
+
+plot.new()
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.65, box.lty=1, ncol = 2)
+```
+
+```{r,echo = FALSE}
+#pred.firstdiff.mat_NALMA <- rbind(rep(NA, 4), pred.firstdiff.mat_NALMA)
+#rownames(pred.firstdiff.mat) <- rev(paste(seq(3,66,2), "Ma", sep = " "))
+
+col.nalma <- colfunc(nrow(ung.firstdiff.mat_NALMA))
+
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Max)", ylab = "Predator First Differences (Max)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"],
+     col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"])
+abline(best.fit)
+
+#points(ung.firstdiff.mat[,"ung.firstdiff.median_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.median_NALMA"], col = "red", pch = 16)
+#points(ung.firstdiff.mat[,"ung.firstdiff.min_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.min_NALMA"], col = "blue", pch = 16)
+
+legend("bottomright", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+#pred.firstdiff.mat_NALMA <- rbind(rep(NA, 4), pred.firstdiff.mat_NALMA)
+#rownames(pred.firstdiff.mat) <- rev(paste(seq(3,66,2), "Ma", sep = " "))
+
+col.nalma <- colfunc(nrow(ung.firstdiff.mat_NALMA))
+
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Max)", ylab = "Predator First Differences (Median)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"],
+     col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"])
+abline(best.fit)
+
+#points(ung.firstdiff.mat[,"ung.firstdiff.median_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.median_NALMA"], col = "red", pch = 16)
+#points(ung.firstdiff.mat[,"ung.firstdiff.min_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.min_NALMA"], col = "blue", pch = 16)
+
+legend("bottomright", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+#pred.firstdiff.mat_NALMA <- rbind(rep(NA, 4), pred.firstdiff.mat_NALMA)
+#rownames(pred.firstdiff.mat) <- rev(paste(seq(3,66,2), "Ma", sep = " "))
+
+col.nalma <- colfunc(nrow(ung.firstdiff.mat_NALMA))
+
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Max)", ylab = "Predator First Differences (Min)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"],
+     col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.max_NALMA"])
+abline(best.fit)
+
+#points(ung.firstdiff.mat[,"ung.firstdiff.median_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.median_NALMA"], col = "red", pch = 16)
+#points(ung.firstdiff.mat[,"ung.firstdiff.min_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.min_NALMA"], col = "blue", pch = 16)
+
+legend("bottomright", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+#pred.firstdiff.mat_NALMA <- rbind(rep(NA, 4), pred.firstdiff.mat_NALMA)
+#rownames(pred.firstdiff.mat) <- rev(paste(seq(3,66,2), "Ma", sep = " "))
+
+col.nalma <- colfunc(nrow(ung.firstdiff.mat_NALMA))
+
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Median)", ylab = "Predator First Differences (Max)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"], pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"],
+     col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"])
+abline(best.fit)
+
+#points(ung.firstdiff.mat[,"ung.firstdiff.median_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.median_NALMA"], col = "red", pch = 16)
+#points(ung.firstdiff.mat[,"ung.firstdiff.min_NALMA"], pred.firstdiff.mat[,"pred.firstdiff.min_NALMA"], col = "blue", pch = 16)
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"], 
+     pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Median)", ylab = "Predator First Differences (Median)",
+     main = "First Difference for Median Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"], 
+       pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"],
+       col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"])
+abline(best.fit)
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1)
+```
+
+```{r}
+summary(best.fit)
+```
+
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"], 
+     pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Median)", ylab = "Predator First Differences (Min)",
+     main = "First Difference for Median Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"], 
+       pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"],
+       col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.median_NALMA"])
+abline(best.fit)
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"], 
+     pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Min)", ylab = "Predator First Differences (Max)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"], 
+       pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"],
+       col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.max_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"])
+abline(best.fit)
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1, ncol = 2)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"], 
+     pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Min)", ylab = "Predator First Differences (Median)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"], 
+       pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"],
+       col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.median_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"])
+abline(best.fit)
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1, ncol = 2)
+```
+
+```{r}
+summary(best.fit)
+```
+
+```{r,echo = FALSE}
+plot(ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"], 
+     pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"],
+     col = col.nalma, pch = 16,
+     xlab = "Ungulate First Differences (Min)", ylab = "Predator First Differences (Min)",
+     main = "First Difference for Log10 Body Mass")
+points(ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"], 
+       pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"],
+       col = "black", pch = 1)
+
+best.fit <- lm(pred.firstdiff.mat_NALMA[,"pred.firstdiff.min_NALMA"]~ung.firstdiff.mat_NALMA[,"ung.firstdiff.min_NALMA"])
+abline(best.fit)
+
+legend("topleft", legend= rownames(ung.firstdiff.mat_NALMA), col = col.nalma, pch = 21,fill=NA, 
+       border=FALSE, cex=0.30, box.lty=1, ncol = 2)
+```
